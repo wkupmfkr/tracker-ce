@@ -8,6 +8,9 @@
 
 #include "polyassert.h"
 
+#include "fileManager.h"
+#include "midiInputMap.h"
+
 #include <array>
 
 #ifdef TRACKER_MINI
@@ -18,13 +21,13 @@
 // clang-format off
 
 #ifdef TRACKER_MINI
-constexpr uint8_t baseMenuGroupCount = 8;
+constexpr uint8_t baseMenuGroupCount = 9;
 constexpr uint8_t projectMenuGroupCount = 10;
 constexpr uint8_t generalMenuGroupCount = 9;
 #elif defined(PLATFORM_IMX)
-constexpr uint8_t baseMenuGroupCount = 7;
+constexpr uint8_t baseMenuGroupCount = 8;
 constexpr uint8_t projectMenuGroupCount = 10;
-constexpr uint8_t generalMenuGroupCount = 12;
+constexpr uint8_t generalMenuGroupCount = 13;
 #else
 constexpr uint8_t baseMenuGroupCount = 6;
 constexpr uint8_t projectMenuGroupCount = 10;
@@ -57,6 +60,56 @@ cMenuGroup menuFunctionButtons(menuBase, "Fn buttons binding", 8);
 #endif
 
 cMenuGroup menuCredits(menuBase, "Info", 4);
+
+#ifdef FEATURE_SYNTH
+cMenuGroup menuMidiRoutes(menuBase, "MIDI input map", kMidiInstrumentsCount);
+static const char* const routeNames[] = {
+    "Default", "Synth 1", "Synth 2", "Synth 3", "Sample 01", "Sample 02",
+    "Sample 03", "Sample 04", "Sample 05", "Sample 06", "Sample 07", "Sample 08",
+    "Sample 09", "Sample 10", "Sample 11", "Sample 12", "Sample 13", "Sample 14",
+    "Sample 15", "Sample 16", "Sample 17", "Sample 18", "Sample 19", "Sample 20",
+    "Sample 21", "Sample 22", "Sample 23", "Sample 24", "Sample 25", "Sample 26",
+    "Sample 27", "Sample 28", "Sample 29", "Sample 30", "Sample 31", "Sample 32",
+    "Sample 33", "Sample 34", "Sample 35", "Sample 36", "Sample 37", "Sample 38",
+    "Sample 39", "Sample 40", "Sample 41", "Sample 42", "Sample 43", "Sample 44",
+    "Sample 45", "Sample 46", "Sample 47", "Sample 48",
+};
+static_assert(std::size(routeNames) == midiInputMap::kLastTarget + 1);
+
+template<int channel>
+struct MidiRouteMenuItem
+{
+    static void save()
+    {
+        mtProject.values.midiInstrument[channel - 1].reserved[1] = midiInputMap::kSignature;
+        sequencer.stopManualNotes();
+        newFileManager.setProjectStructChanged();
+    }
+
+    strItemTypeListTextWithAction setup{ &mtProject.values.midiInstrument[channel - 1].reserved[0],
+                                         std::size(routeNames), routeNames, save };
+    cMenuItem item;
+    explicit MidiRouteMenuItem(const char* label)
+      : item(menuMidiRoutes, label, nullptr, menuTypeItemListTextWithAction, &setup) {}
+};
+
+static MidiRouteMenuItem<1> channel1("Channel 01");
+static MidiRouteMenuItem<2> channel2("Channel 02");
+static MidiRouteMenuItem<3> channel3("Channel 03");
+static MidiRouteMenuItem<4> channel4("Channel 04");
+static MidiRouteMenuItem<5> channel5("Channel 05");
+static MidiRouteMenuItem<6> channel6("Channel 06");
+static MidiRouteMenuItem<7> channel7("Channel 07");
+static MidiRouteMenuItem<8> channel8("Channel 08");
+static MidiRouteMenuItem<9> channel9("Channel 09");
+static MidiRouteMenuItem<10> channel10("Channel 10");
+static MidiRouteMenuItem<11> channel11("Channel 11");
+static MidiRouteMenuItem<12> channel12("Channel 12");
+static MidiRouteMenuItem<13> channel13("Channel 13");
+static MidiRouteMenuItem<14> channel14("Channel 14");
+static MidiRouteMenuItem<15> channel15("Channel 15");
+static MidiRouteMenuItem<16> channel16("Channel 16");
+#endif
 
 // elementy/////////
 
@@ -135,6 +188,11 @@ cMenuItem melPadsBright(menuGeneral,
                         padsBrightDesc,
                         menuTypeItemListTextWithAction,
                         &setupPadsBrightness);
+#ifdef PLATFORM_IMX
+const char* const rootGuideOptions[] = {"On", "Off"};
+const strItemTypeListText setupRootGuide{&mtConfig.general.rootGuideOff, 2, rootGuideOptions};
+cMenuItem melRootGuide(menuGeneral, "Root guide", "Dimly light root notes in Pattern note view.", menuTypeItemListText, &setupRootGuide);
+#endif
 cMenuItem melPadPreview(menuGeneral,
                         "Pads preview",
                         padsPrevDesc,

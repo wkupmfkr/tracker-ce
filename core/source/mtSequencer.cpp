@@ -3,6 +3,7 @@
 
 #ifdef FEATURE_SYNTH
 #include "Synth.h"
+#include "midiInputMap.h"
 #endif
 #include "fileManager.h"
 #include "mtAudioEngine.h"
@@ -333,6 +334,13 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
         {
             sendNoteOff(row, &playerRow.stepSent);
             playerRow.noteOpen = 0;
+#ifdef FEATURE_SYNTH
+            if (playerRow.noteSource >= midiInputMap::kFirstSource)
+            {
+                playerRow.recOpen = 0;
+                playerRow.noteSource = -1;
+            }
+#endif
         }
     }
 
@@ -1505,6 +1513,7 @@ void Sequencer::stopOpenNoteOnTrack(int track, bool leaveStepOpen)
 
     if (player.track[track].recOpen || player.track[track].stepOpen || player.track[track].noteOpen)
     {
+        player.track[track].noteSource = -1;
         player.track[track].stepOpen = leaveStepOpen;
         player.track[track].noteOpen = 0;
         player.track[track].recOpen = 0;
@@ -1640,8 +1649,15 @@ void Sequencer::startRecOnExtClk_Reset(void)
 {
     player.startRecOnExtClk = 0;
 }
+#ifdef FEATURE_SYNTH
+static const Sequencer::strPattern::strTrack::strStep* lastMappedCCStep = nullptr;
+#endif
+
 void Sequencer::recStart(void)
 {
+#ifdef FEATURE_SYNTH
+    lastMappedCCStep = nullptr;
+#endif
     player.isREC = 1;
     stopAllOpenNotes();
 
@@ -1680,6 +1696,9 @@ void Sequencer::showPreRollPopup()
 
 void Sequencer::recEnable(bool enable)
 {
+#ifdef FEATURE_SYNTH
+    lastMappedCCStep = nullptr;
+#endif
     player.isREC = enable;
     if (!enable)
     {
@@ -2548,12 +2567,169 @@ uint8_t Sequencer::recVelocity()
            mtConfig.general.recOptions == recOptions_velocity;
 }
 
+#ifdef FEATURE_SYNTH
+// Use the same manual voice state as the existing live player, so transport
+// stop and project changes can close these notes through the normal cleanup.
+void Sequencer::playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source)
+{
+    releaseRoutedNote(source);
+    const bool synth = isSynthInstrument(instrument);
+    const int count = synth ? kAllTracks : kSampleTracks;
+    const int first = synth ? kSampleTracks : 0;
+    for (int offset = 0; offset < count; ++offset)
+    {
+        const int track = (first + offset) % count;
+        auto& voice = player.track[track];
+        if (voice.noteOpen || voice.recOpen || isTrackEngineMuted(track))
+            continue;
+
+        voice.noteOpen = 1;
+        voice.recOpen = 1;
+        voice.noteLength = -1;
+        voice.noteSource = source;
+        voice.stepSent.note = note;
+        voice.stepSent.instrument = instrument;
+        if (synth)
+        {
+            // Two inputs can target the same synth pitch. Only the last held
+            // key releases it, so do not stack another indistinguishable note.
+            for (const auto& other : player.track)
+                if (&other != &voice && other.noteOpen && other.recOpen &&
+                    other.stepSent.instrument == instrument && other.stepSent.note == note)
+                    return;
+            sendMidiNoteOn(note, velocity, instrumentIdxToMidiChannel(instrument), true);
+        }
+        else
+        {
+            const int level = mapClamped<int>(velocity, 0, 127, 0, getInstrumentVelo(instrument));
+            instrumentPlayer[track].noteOff();
+            instrumentPlayer[track].noteOn(instrument, note, velocityToVolume(level), fx.FX_TYPE_VOLUME, 0, 0, 0);
+            engine.setLastUsedVoice(track);
+        }
+        return;
+    }
+}
+
+bool Sequencer::releaseRoutedNote(int16_t source)
+{
+    for (int track = 0; track < kAllTracks; ++track)
+    {
+        auto& voice = player.track[track];
+        if (!voice.recOpen || !voice.noteOpen || voice.noteSource != source)
+            continue;
+        voice.noteSource = -1;
+        voice.recOpen = 0;
+        voice.noteOpen = 0;
+        const auto& step = voice.stepSent;
+        if (isSynthInstrument(step.instrument))
+        {
+            for (const auto& other : player.track)
+                if (other.noteOpen && other.recOpen && other.stepSent.instrument == step.instrument &&
+                    other.stepSent.note == step.note)
+                    return true;
+            sendMidiNoteOff(step.note, 0, instrumentIdxToMidiChannel(step.instrument), true);
+        }
+        else
+            instrumentPlayer[track].noteOff();
+        return true;
+    }
+    return false;
+}
+
+bool Sequencer::releaseMappedInput(int16_t source)
+{
+    const int16_t recorded = source + midiInputMap::kSourceCount;
+    for (auto& voice : player.track)
+    {
+        if ((voice.recOpen || voice.noteOpen) && voice.noteSource == recorded)
+        {
+            handleNoteOff(GRID_OUTSIDE_PATTERN, voice.stepSent.note, 0, recorded);
+            if (!isPlay() && !isRec() && isEditMode() && mtInterface.isPatternScreenActive() && noMoreRecOpen())
+                patternEditor.moveCursorByStepParallel();
+            patternEditor.refreshPatternFromOutsideModule();
+            return true;
+        }
+    }
+    return releaseRoutedNote(source);
+}
+
+bool Sequencer::recordMappedSynthCC(int instrument, uint8_t number, uint8_t value)
+{
+    if (number < 110 || number > 119 || player.preRecMetronomeActive)
+        return false;
+    const bool edit = isEditMode() && mtInterface.isPatternScreenActive() &&
+                      mtPopups.getStepPopupState() == stepPopupNone;
+    const bool playing = isPlay();
+    if (!(edit || (isRec() && playing)))
+        return false;
+
+    constexpr uint8_t types[] = {strFxConsts::FX_TYPE_SEND_CC_A, strFxConsts::FX_TYPE_SEND_CC_B,
+        strFxConsts::FX_TYPE_SEND_CC_C, strFxConsts::FX_TYPE_SEND_CC_D, strFxConsts::FX_TYPE_SEND_CC_E,
+        strFxConsts::FX_TYPE_SEND_CC_F, strFxConsts::FX_TYPE_DELAY_SEND, strFxConsts::FX_TYPE_REVERB_SEND,
+        strFxConsts::FX_TYPE_PANNING, strFxConsts::FX_TYPE_SYNTH_GAIN};
+    const int type = types[number - 110];
+    const int encoded = number < 116 ? mtProject.values.synthPart[instrumentIdxToSynthIdx(instrument)].macroValue[number - 110] :
+        (value * getFxMax(type) + 63) / 127;
+    // Step entry follows the cursor. While running, prefer the selected armed track,
+    // then try the other armed tracks if that row belongs to another instrument.
+    const int selected = getActualTrack();
+    const int single = playing ? getSingleArmedTrack() : -1;
+    const int first = single >= 0 ? single : selected;
+    for (int offset = 0; offset < (playing ? kAllTracks : 1); ++offset)
+    {
+        const int track = (first + offset) % kAllTracks;
+        if (playing && !isRecArmedOnTrack(track))
+            continue;
+        const int row = playing ? getDestRecordingStep(track, !recMicrotiming()) : getActualStep();
+        if (row < 0 || row > currentPattern->track[0].length)
+            return false;
+        auto& step = currentPattern->track[track].step[row];
+        // An empty note row may already contain independent velocity or timing.
+        // The instrument matters for playable notes and for existing pattern FX.
+        const bool hasPatternFx = step.fx[0].type != fx.FX_TYPE_NONE || step.fx[1].type != fx.FX_TYPE_NONE;
+        if ((step.note >= 0 || hasPatternFx) && step.instrument != instrument)
+            continue;
+        int slot = -1;
+        for (int i = 1; i >= 0; --i)
+        {
+            if (step.fx[i].type == type) { slot = i; break; }
+            if (slot < 0 && step.fx[i].type == fx.FX_TYPE_NONE) slot = i;
+        }
+        if (slot < 0 || (step.fx[slot].type == type && step.fx[slot].value == encoded))
+            return false;
+        if (lastMappedCCStep != &step || step.fx[slot].type != type)
+            newFileManager.storePatternUndoRevision();
+        lastMappedCCStep = &step;
+        step.instrument = instrument;
+        step.fx[slot].type = type;
+        step.fx[slot].value = encoded;
+        newFileManager.setActualPatternStructChanged();
+        return true;
+    }
+    return false;
+}
+
+void Sequencer::releaseRoutedChannel(int16_t firstSource)
+{
+    for (const auto& voice : player.track)
+    {
+        const int source = voice.noteSource;
+        if (source >= firstSource && source < firstSource + 128)
+            releaseRoutedNote(source);
+        const int recorded = source - midiInputMap::kSourceCount;
+        if (recorded >= firstSource && recorded < firstSource + 128)
+            releaseMappedInput(recorded);
+    }
+}
+#endif
+
 AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
   byte channel, // pochodzenie grida np. GRID_OUTSIDE_PATTERN
   byte note,
   int8_t velocity, // 0-127, historyczna wartosc specjalna -1 jest tozsama z 127
-  int16_t source)  // nr pada, jesli midi to source = nuta+100,
+  int16_t source, int mappedInstrument)  // nr pada, jesli midi to source = nuta+100,
 {
+    const int inputInstrument = mappedInstrument >= 0 ? mappedInstrument : mtProject.values.lastUsedInstrument;
     if (!recVelocity() || velocity < 0)
     {
         velocity = 127;
@@ -2590,7 +2766,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
             {
                 // xxx: ignorujemy source?
                 step->instrument = changeInstrumentInSpecificOrder(
-                  mtProject.values.lastUsedInstrument, 0, !isSampleTrack(sel->firstTrack));
+                  inputInstrument, 0, !isSampleTrack(sel->firstTrack));
             }
             step->note = note;
 
@@ -2624,9 +2800,10 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
     {
         int8_t singleArmedTrack = getSingleArmedTrack();
         int startTrack = (singleArmedTrack >= 0) ? singleArmedTrack : getActualTrack();
-        int endTrack = (singleArmedTrack >= 0) ? (singleArmedTrack + 1) : kAllTracks;
+        int count = singleArmedTrack >= 0 ? 1 :
+            (mappedInstrument >= 0 ? kAllTracks : kAllTracks - startTrack);
 
-        if (singleArmedTrack >= 0)
+        if (singleArmedTrack >= 0 && mappedInstrument < 0)
         {
             bool found = false;
             for (uint8_t i = 0; i < liveRecHeldNotesCount; i++)
@@ -2664,8 +2841,15 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
             }
         }
 
-        for (int tr = startTrack; tr < endTrack; tr++)
+        for (int offset = 0; offset < count; ++offset)
         {
+            const int tr = (startTrack + offset) % kAllTracks;
+#ifdef FEATURE_SYNTH
+            if (player.track[tr].recOpen && midiInputMap::isMonitorSource(player.track[tr].noteSource))
+                continue;
+#endif
+            if (mappedInstrument >= 0 && isSampleInstrument(mappedInstrument) && !isSampleTrack(tr))
+                continue;
             uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !recMicrotiming());
 
             strPattern::strTrack::strStep* step = &currentPattern->track[tr].step[destinationStep];
@@ -2681,7 +2865,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
              * spr warunek wejscia w track
              */
             bool isPrerollPreviewOnly = player.preRecMetronomeActive && !isAnticipatedBeat1;
-            if ((isPrerollPreviewOnly || (step->isNoteEmpty() && !step->hasAnyFx())) && isRecArmedOnTrack(tr))
+            if ((isPrerollPreviewOnly || (step->isNoteEmpty() && (!step->hasAnyFx() || (mappedInstrument >= 0 && step->instrument == mappedInstrument)))) && isRecArmedOnTrack(tr))
             {
                 if (singleArmedTrack < 0 && player.track[tr].noteOpen && !padInstrumentEdit)
                 {
@@ -2710,7 +2894,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                 }
 
                 int newInstrument =
-                  padInstrumentEdit ? source : mtProject.values.lastUsedInstrument;
+                  padInstrumentEdit ? source : inputInstrument;
                 int inst =
                   changeInstrumentInSpecificOrder(newInstrument, 0, !isSampleTrack(tr));
                 velocity =
@@ -2724,6 +2908,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     wasChangeInPattern = true;
 
                     player.track[tr].recOpen = 1;
+                    player.track[tr].noteSource = source;
                     player.track[tr].recNoteOnStepIdx = destinationStep;
 
                     if (recMicrotiming())
@@ -2747,6 +2932,9 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
                 player.track[tr].stepSent.note = note;
                 player.track[tr].stepSent.instrument = inst;
+
+                if (isPrerollPreviewOnly && mappedInstrument >= 0)
+                    player.track[tr].noteSource = source;
 
                 if (doPreview)
                 {
@@ -2781,7 +2969,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
     }
     else // czyli playMode / dogrywanie / wgrywanie akordów w edit
     {
-        int instrument = mtProject.values.lastUsedInstrument;
+        int instrument = inputInstrument;
 
         for (int tryIdx = 0; tryIdx < kAllTracks; tryIdx++)
         {
@@ -2815,7 +3003,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                 else if (isSampleTrack(trackIdx))
                 {
                     instrumentPlayer[trackIdx].noteOff();
-                    instrumentPlayer[trackIdx].noteOn(mtProject.values.lastUsedInstrument,
+                    instrumentPlayer[trackIdx].noteOn(inputInstrument,
                                                       note,
                                                       velocityToVolume(velocity),
                                                       fx.FX_TYPE_VOLUME,
@@ -2837,7 +3025,7 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 
                     step->note = note;
                     step->instrument = changeInstrumentInSpecificOrder(
-                      mtProject.values.lastUsedInstrument, 0, !isSampleTrack(trackIdx));
+                      inputInstrument, 0, !isSampleTrack(trackIdx));
 
                     wasChangeInPattern = true;
 
@@ -2915,9 +3103,19 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             }
 
             // Only write the OFF once the last pad is released
-            if (liveRecHeldNotesCount == 0)
+            if (liveRecHeldNotesCount == 0
+#ifdef FEATURE_SYNTH
+                || midiInputMap::isRecordingSource(source)
+#endif
+            )
             {
                 uint8_t tr = singleArmedTrack;
+#ifdef FEATURE_SYNTH
+                if (midiInputMap::isMonitorSource(player.track[tr].noteSource) ||
+                    ((midiInputMap::isRecordingSource(source) || midiInputMap::isRecordingSource(player.track[tr].noteSource)) &&
+                     source != player.track[tr].noteSource))
+                    return;
+#endif
                 bool shouldOff = player.track[tr].recOpen || player.track[tr].noteOpen;
                 if (shouldOff)
                 {
@@ -2981,6 +3179,12 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
             liveRecHeldNotesCount = 0;
             for (uint8_t tr = 0; tr < kAllTracks; tr++)
             {
+#ifdef FEATURE_SYNTH
+                if (midiInputMap::isMonitorSource(player.track[tr].noteSource) ||
+                    ((midiInputMap::isRecordingSource(source) || midiInputMap::isRecordingSource(player.track[tr].noteSource)) &&
+                     source != player.track[tr].noteSource))
+                    continue;
+#endif
                 uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
                 bool shouldOff = (player.track[tr].recOpen || player.track[tr].noteOpen) &&
                                  player.track[tr].stepSent.note == note;

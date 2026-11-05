@@ -124,7 +124,11 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
+#ifdef FEATURE_SYNTH
+const uint8_t FX_COUNT = 47;
+#else
 const uint8_t FX_COUNT = 46;
+#endif
 const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fxów na końcu listy jest ukrytych
 
 const uint8_t FX_VALUE_MAX = 127;
@@ -1114,7 +1118,9 @@ struct strMtConfig
         uint8_t font;
         uint8_t previewVolume;
         uint8_t recThreshold;
+        uint8_t rootGuideOff; // previously tail padding
     } general;
+    static_assert(sizeof(strGeneralValues) == 18, "Keep saved general settings compatible");
 
     struct strInterfaceState
     {

@@ -178,6 +178,7 @@ class Sequencer
             FX_TYPE_R1,
             FX_TYPE_GRANULAR_LENGTH = FX_TYPE_R1,
             FX_TYPE_R2,
+            FX_TYPE_SYNTH_GAIN = FX_TYPE_R2,
             FX_TYPE_R3,
             FX_TYPE_R7,
             FX_TYPE_R8,
@@ -895,7 +896,14 @@ class Sequencer
     bool isFirstPatternStep(void);
     bool isLastPatternStep(void);
 
-    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source);
+#ifdef FEATURE_SYNTH
+    void playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source);
+    bool releaseRoutedNote(int16_t source);
+    bool releaseMappedInput(int16_t source);
+    bool recordMappedSynthCC(int instrument, uint8_t number, uint8_t value);
+    void releaseRoutedChannel(int16_t firstSource);
+#endif
+    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source, int mappedInstrument = -1);
     void handleNoteOff(byte channel, byte pitch, byte volume, int16_t source);
     void updateTrackLengths(strPattern* pattern);
 

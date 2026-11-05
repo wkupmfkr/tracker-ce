@@ -338,7 +338,7 @@ cPerformFx sampleEndPerfFx(mtPerfSampleEnd,
 //########## SYNTH STUFF #############################################################
 
 #ifdef FEATURE_SYNTH
-const fxSetup synthFxSetup = { .min = -100, .max = 100, .isGlobalFx = true };
+constexpr fxSetup synthFxSetup = { .min = -100, .max = 100, .isGlobalFx = true, .acceptsGlobalCC = true };
 
 cPerformFx synth1ReverbSend(
   mtPerfSynth1ReverbSend,

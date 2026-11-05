@@ -51,6 +51,7 @@ std::map<uint8_t, audioEngine::SynthParam> audioEngine::fxIdToSynthParam = {
     { Sequencer::strFxConsts::FX_TYPE_PANNING, SynthParam::kPanning },
     { Sequencer::strFxConsts::FX_TYPE_DELAY_SEND, SynthParam::kDelaySend },
     { Sequencer::strFxConsts::FX_TYPE_REVERB_SEND, SynthParam::kReverbSend },
+    { Sequencer::strFxConsts::FX_TYPE_SYNTH_GAIN, SynthParam::kVolume },
     { Sequencer::strFxConsts::FX_TYPE_VOLUME, SynthParam::kVolume },
     { Sequencer::strFxConsts::FX_TYPE_SEND_CC_A, SynthParam::kMacro1 },
     { Sequencer::strFxConsts::FX_TYPE_SEND_CC_B, SynthParam::kMacro2 },
@@ -1119,6 +1120,7 @@ AUDIO_CORE_RAM bool audioEngine::isSynthFx(uint8_t fx_id)
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_C:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_D:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_E:
+        case Sequencer::strFxConsts::FX_TYPE_SYNTH_GAIN:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_F:
         case Sequencer::strFxConsts::FX_TYPE_REVERB_SEND: return true;
         default: return false;

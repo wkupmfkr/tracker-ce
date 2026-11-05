@@ -2209,7 +2209,8 @@ bool cInstrumentEditor::isParamShown(int synthPartIdx, SynthInstrumentParamsCC p
 
     std::optional<mtInstrumentEditorMode> modeForParam = paramToMode(paramCcId);
 
-    return modeForParam.has_value() && mode == modeForParam.value() &&
+    return isSynthInstrument(mtProject.values.lastUsedInstrument) &&
+           modeForParam.has_value() && mode == modeForParam.value() &&
            synthPartIdx == instrumentIdxToSynthIdx(mtProject.values.lastUsedInstrument);
 }
 
@@ -2224,9 +2225,9 @@ std::optional<mtInstrumentEditorMode> cInstrumentEditor::paramToMode(
         case SynthInstrumentParamsCC::kMacro4:
         case SynthInstrumentParamsCC::kMacro5:
         case SynthInstrumentParamsCC::kMacro6:
+            return mtInstrumentEditorMode::mtInstEditModeSynthMacros;
         case SynthInstrumentParamsCC::kSynthReverbSend:
         case SynthInstrumentParamsCC::kSynthDelaySend:
-            return mtInstrumentEditorMode::mtInstEditModeSynthMacros;
         case SynthInstrumentParamsCC::kSynthGain:
         case SynthInstrumentParamsCC::kSynthPanning:
             return mtInstrumentEditorMode::mtInstEditModeSynth;

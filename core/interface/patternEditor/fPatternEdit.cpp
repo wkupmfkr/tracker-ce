@@ -51,6 +51,9 @@ static void functNameTrack();
 
 static void functClockWarningPopupButtons(uint8_t button, uint8_t state);
 
+enum class MoreGesture { Idle, Pressed, Paging };
+static MoreGesture moreGesture = MoreGesture::Idle;
+static void functMore(uint8_t state);
 static void functNextActionButtonPage();
 
 // pozostale
@@ -354,6 +357,7 @@ void cPatternEditor::start(uint32_t options)
 
 void cPatternEditor::stop()
 {
+    moreGesture = MoreGesture::Idle;
     if (mtPopups.isNoteKeyboardPopupActive())
     {
         mtPopups.toggleNoteKeyboardPopup();
@@ -1652,8 +1656,8 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
             if (editParam == EditNote)
             {
                 bool isBeatSlice =
-                  mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
-                  playModeBeatSlice;
+                  (isSampleInstrument(mtProject.values.lastUsedInstrument) &&
+                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice);
 
                 fillData[fillIdx].from = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
             }
@@ -1682,8 +1686,8 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
             if (editParam == EditNote)
             {
                 bool isBeatSlice =
-                  mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
-                  playModeBeatSlice;
+                  (isSampleInstrument(mtProject.values.lastUsedInstrument) &&
+                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice);
 
                 fillData[fillIdx].to = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
             }
@@ -2122,6 +2126,32 @@ static void functShift(uint8_t state)
     }
 }
 
+static bool jumpTrackPage(int direction)
+{
+    if (moreGesture == MoreGesture::Idle ||
+        !PTE->buttons->isButtonPressed(interfaceButton7))
+        return false;
+
+    moreGesture = MoreGesture::Paging;
+    auto& grid = PTE->trackerPattern;
+    const int width = PTE->patternViewMode > 0 ? 8 : 4;
+    const int page = grid.actualTrack / width;
+    const int nextPage = clamp<int>(page + direction, 0, (kAllTracks - 1) / width);
+    if (page == nextPage)
+        return true;
+
+    const int pageStart = nextPage * width;
+    grid.actualTrack = clamp<int>(pageStart + grid.actualTrack % width, 0, kAllTracks - 1);
+    grid.firstVisibleTrack = clamp<int>(pageStart, 0, kAllTracks - width);
+    grid.selectState = 1;
+    grid.selectColumn = 0;
+    PTE->isSelectingNow = 0;
+    PTE->showFxInfo();
+    PTE->lightUpPadBoard();
+    display.refreshControl(PTE->patternControl);
+    return true;
+}
+
 static void functLeft()
 {
     if (PTE->fillState > 0)
@@ -2169,7 +2199,8 @@ static void functLeft()
         return;
     }
 
-    PTE->changeActualStep(moveLeft);
+    if (!jumpTrackPage(-1))
+        PTE->changeActualStep(moveLeft);
 }
 
 static void functRight()
@@ -2219,7 +2250,8 @@ static void functRight()
         return;
     }
 
-    PTE->changeActualStep(moveRight);
+    if (!jumpTrackPage(1))
+        PTE->changeActualStep(moveRight);
 }
 
 static void functUp()
@@ -4171,6 +4203,13 @@ void cPatternEditor::loadPatternsStatus()
     }
 }
 
+static uint8_t beatSliceHighlightLevel()
+{
+    const int background = mtConfig.values.padsLightBack;
+    const int foreground = mtConfig.values.padsLightFront;
+    return background + (foreground - background) / 4;
+}
+
 void cPatternEditor::lightUpPadBoard()
 {
     padsBacklight.clearGlobalPads(1, 1, 0);
@@ -4218,6 +4257,34 @@ void cPatternEditor::lightUpPadBoard()
 
     //--------------------------------------------
 
+    const int instrument = mtProject.values.lastUsedInstrument;
+    const bool isBeatSlice = isSampleInstrument(instrument) &&
+                             mtProject.instrument[instrument].playMode == playModeBeatSlice;
+    const int padCount = isBeatSlice ? std::min<int>(interfacePadsCount, mtProject.instrument[instrument].sliceNumber)
+                                     : int(interfacePadsCount);
+    bool guide = false;
+#if defined(PLATFORM_IMX) && !defined(TRACKER_MINI)
+    guide = !mtConfig.general.rootGuideOff && editParam == EditNote && !fillState &&
+            !keyboardManager.getState() && mtPopups.getStepPopupState() == stepPopupNone &&
+            !mtPopups.isNoteKeyboardPopupActive();
+#endif
+    if (guide || (isBeatSlice && editMode > 0 && editParam == EditNote))
+    {
+        for (int pad = 0; pad < padCount; ++pad)
+        {
+            const bool root = guide && mtPadBoard.getNoteFromPad(pad, isBeatSlice) % 12 ==
+                                       mtProject.values.padBoardRootNote % 12;
+            if (isBeatSlice && editMode > 0)
+            {
+                const auto level = (!guide || root) ? mtConfig.values.padsLightBack
+                                                    : mtConfig.values.padsLightBackDim;
+                padsBacklight.setBackLayer(1, level, pad);
+            }
+            else if (root)
+                padsBacklight.setBackLayer(1, mtConfig.values.padsLightBackDim, pad);
+        }
+    }
+
     if (editMode > 0)
     {
         Sequencer::strPattern* seq = sequencer.getPatternToUI();
@@ -4229,28 +4296,13 @@ void cPatternEditor::lightUpPadBoard()
         {
             case EditNote:
             {
-                bool isBeatSlice =
-                  mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
-                  playModeBeatSlice;
-
-                if (isBeatSlice)
-                {
-                    for (uint8_t pad = 0;
-                         pad <
-                         mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
-                         pad++)
-                    {
-                        padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
-                    }
-                }
-
                 if (show_note < 0)
                     break;
 
                 if (isBeatSlice)
                 {
                     padsBacklight.setFrontLayer(1,
-                                                mtConfig.values.padsLightFront,
+                                                beatSliceHighlightLevel(),
                                                 padToBeatNoteConverter.getPadForNote(show_note));
                 }
                 else
@@ -4389,6 +4441,14 @@ void cPatternEditor::lightUpPadBoard()
             {
                 case EditNote:
 
+                    if (isBeatSlice && guide)
+                    {
+                        const int pad = show_note - FIRST_BEAT_SLICE_NOTE;
+                        if (pad >= 0 && pad < padCount)
+                            padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
+                        break;
+                    }
+
                     if (mtPadBoard.countPadsWithNote(show_note, padsTempData))
                     {
                         for (uint8_t i = 0; i < 48; i++)
@@ -4460,8 +4520,8 @@ static void functMiniMiddle(uint8_t state)
         case cPatternEditor::EditNote: // nuta
         {
             // xxx niedorobione
-            bool isBeatSlice = mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
-                               playModeBeatSlice;
+            bool isBeatSlice = (isSampleInstrument(mtProject.values.lastUsedInstrument) &&
+                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice);
             uint8_t noteFromPad = isBeatSlice
                                     ? /*padToBeatNoteConverter.getNoteFromPad(pad)*/ mtProject
                                         .values.lastUsedNote // <<<< tu moze byc zle
@@ -4612,7 +4672,10 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
     }
     else if (state == buttonPress)
     {
-        padsBacklight.setFrontLayer(1, mtConfig.values.padsLightFront, pad);
+        const int instrument = mtProject.values.lastUsedInstrument;
+        const bool beatSliceNote = PTE->editParam == cPatternEditor::EditNote &&
+            isSampleInstrument(instrument) && mtProject.instrument[instrument].playMode == playModeBeatSlice;
+        padsBacklight.setFrontLayer(1, beatSliceNote ? beatSliceHighlightLevel() : mtConfig.values.padsLightFront, pad);
     }
     else
     {
@@ -4625,7 +4688,8 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
         sendSelection();
 
         bool isBeatSlice =
-          mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
+          (isSampleInstrument(mtProject.values.lastUsedInstrument) &&
+                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice);
 
         uint8_t noteToPlay = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
 
@@ -4672,8 +4736,8 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
             case cPatternEditor::EditNote: // nuta
             {
                 bool isBeatSlice =
-                  mtProject.instrument[mtProject.values.lastUsedInstrument].playMode ==
-                  playModeBeatSlice;
+                  (isSampleInstrument(mtProject.values.lastUsedInstrument) &&
+                   mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice);
                 uint8_t noteFromPad = mtPadBoard.getNoteFromPad(pad, isBeatSlice);
                 if (sequencer.isRec())
                 {
@@ -5125,7 +5189,7 @@ void cPatternEditor::setActionButtonPage1Funct()
         ip->setButtonObj(interfaceButton4, buttonPress, functPreview);
     }
 
-    ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
+    ip->setButtonObj(interfaceButton7, functMore);
 }
 
 // druga strona akcji
@@ -5147,7 +5211,7 @@ void cPatternEditor::setActionButtonPage2Funct()
     {
     }
 
-    ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
+    ip->setButtonObj(interfaceButton7, functMore);
 }
 
 // third buttons page
@@ -5158,7 +5222,7 @@ void cPatternEditor::setActionButtonPage3Funct()
     ip->setButtonObj(interfaceButton0, buttonPress, functNamePattern);
     ip->setButtonObj(interfaceButton1, buttonPress, functNameTrack);
 
-    ip->setButtonObj(interfaceButton7, buttonPress, functNextActionButtonPage);
+    ip->setButtonObj(interfaceButton7, functMore);
 }
 
 // odsiwez przypisanie akcji oraz grafike przyciskow pod ekranem
@@ -5210,8 +5274,19 @@ uint8_t cPatternEditor::getPreviousUsedFxValue()
     return previousFxValue;
 }
 
-static void functNextActionButtonPage()
+static void functMore(uint8_t state)
 {
+    if (state == buttonRelease)
+    {
+        const bool tap = moreGesture == MoreGesture::Pressed;
+        moreGesture = MoreGesture::Idle;
+        if (tap)
+            functNextActionButtonPage();
+        return;
+    }
+    if (state != buttonPress)
+        return;
+    moreGesture = MoreGesture::Idle;
     bool anyPushed = false;
     for (uint8_t button = interfaceButton0; button < interfaceButton7; button++)
     {
@@ -5226,6 +5301,11 @@ static void functNextActionButtonPage()
         return;
     }
 
+    moreGesture = MoreGesture::Pressed;
+}
+
+static void functNextActionButtonPage()
+{
     PTE->actualActionButtonsPage++;
     if (PTE->actualActionButtonsPage > PTE->actionButtonsPagesCount - 1)
     {

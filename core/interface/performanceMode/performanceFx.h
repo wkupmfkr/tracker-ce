@@ -17,6 +17,7 @@ struct fxSetup
     uint8_t blockedFx2 = 0;
 
     bool isGlobalFx = false;
+    bool acceptsGlobalCC = false;
 };
 
 class cPerformFx
