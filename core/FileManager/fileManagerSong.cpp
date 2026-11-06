@@ -138,6 +138,18 @@ void cFileManager::copySongTracks(char* currentProjectPath,
         destPattern->track[0].length = srcPattern->track[0].length;
     }
 
+    for (int i = 0; i < tracksNum; ++i)
+    {
+        const int source = trackStartSrc + i, dest = trackStartDest + i;
+        if (srcPattern->hasTrackLoop(source) || destPattern->hasTrackLoop(dest))
+            destPattern->setTrackLoop(dest, srcPattern->hasTrackLoop(source) ?
+                srcPattern->trackLastStep(source) : destPattern->track[0].length);
+    }
+    if (tracksNum == kAllTracks && (srcPattern->taggedLoops() || destPattern->taggedLoops()))
+    {
+        destPattern->initLoops();
+        destPattern->rezerwa2 = srcPattern->resetBars();
+    }
     sequencer.updateTrackLengths(destPattern);
 
     if (updatePatternBitmask(destPaternIdx, destPattern))

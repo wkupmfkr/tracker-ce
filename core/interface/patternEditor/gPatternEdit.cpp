@@ -156,7 +156,7 @@ void cPatternEditor::initDisplayControls()
     prop.data = &fillStepList;
     param3PopupListControl = display.createControl<cList>(&prop);
 
-    // lista instrumentów
+    // lista instrument泥쁶
     prop.x = (800 / 8) * (4) + 1;
     prop.data = &fillInstrumentsFromList;
     intstrumentsFromPopupListControl = display.createControl<cList>(&prop);
@@ -409,6 +409,25 @@ void cPatternEditor::showLength(uint8_t forceShow)
     if (actualActionButtonsPage != 0)
         return;
 
+    if (editTrackLoop)
+    {
+        const int track = trackerPattern.actualTrack;
+        const auto* pattern = sequencer.getPatternToUI();
+        const int length = pattern->trackLastStep(track) + 1;
+        const bool pending = sequencer.resetTrackLoopsPending();
+        const int bars = pattern->resetBars();
+        char value[sizeof(cLength)];
+        snprintf(value, sizeof(value), "%d R%d%s", length, bars, pending ? "*" : "");
+        if (!forceShow && lastLength == 256 + track && strcmp(cLength, value) == 0) return;
+        lastLength = 256 + track;
+        snprintf(cLength, sizeof(cLength), "%s", value);
+        snprintf(trackLoopLabel, sizeof(trackLoopLabel), "T%d Length", track + 1);
+        display.setControlText(label[1], trackLoopLabel);
+        display.setControlText2(label[1], cLength);
+        display.refreshControl(label[1]);
+        return;
+    }
+    if (forceShow) display.setControlText(label[1], "Length");
     const char* numberFormat =
       mtConfig.general.numberingMode == NumberingMode::kHexadecimal ? "%02X" : "%d";
     uint8_t localLength = sequencer.getPatternToUI()->track[0].length + 1;
@@ -1191,7 +1210,10 @@ void cPatternEditor::showMuteButtons(uint8_t state, bool midiTracks)
                 topText =
                   midiTracks ? mtProject.values.midiTrackNames[i] : mtProject.values.TrackNames[i];
                 bottomText = mute ? (char*)"Unmute" : (char*)"Mute";
-                colors = mute ? display.getTheme().inactiveLabelsColors
+                const int track = i + (midiTracks ? 8 : 0);
+                if (engine.patternSoloTracks & (1u << track))
+                    bottomText = mute ? (char*)"Solo/M" : (char*)"Solo";
+                colors = (mute || engine.patternTrackExcluded(track)) ? display.getTheme().inactiveLabelsColors
                               : display.getTheme().activeLabelsColors;
             }
 

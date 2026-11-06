@@ -194,55 +194,30 @@ void Si4703::setRegion(radio_region_t region, uint8_t init)
 
 bool Si4703::setFrequency(float freq)
 {
-    if (isInitializedProperly && seek_control.seek_state == notInitialized)
-    {
-        int newChannel;
-        newChannel =
-          (float)((freq - freqBottomBase_MHz) / freqSpacing_MHz) + 0.5f; // 0.5 for ceil rounding
+    if (!isInitializedProperly || seek_control.seek_state != notInitialized ||
+        readRegisters(true) != I2cBusController::kOK)
+        return false;
 
-        readRegisters();
-        si4703_registers[rCHANNEL] &= ~CHANN_MASK; // Clear out the channel bits
-        si4703_registers[rCHANNEL] |= newChannel;  // Mask in the new channel
-        si4703_registers[rCHANNEL] |= TUNE;        // Set the TUNE bit to start
-        updateRegisters();
-
-        while (1)
+    const int channel = static_cast<int>((freq - freqBottomBase_MHz) / freqSpacing_MHz + 0.5f);
+    si4703_registers[rCHANNEL] = (si4703_registers[rCHANNEL] & ~CHANN_MASK) |
+                                 (channel & CHANN_MASK) | TUNE;
+    auto waitForCompletionBit = [this](bool expected) {
+        // Bound both phases, including when the chip acknowledges I2C but never changes STC.
+        for (unsigned poll = 0; poll < 250; ++poll)
         {
-            readRegisters();
-            if ((si4703_registers[rSTATUSRSSI] & STC) != 0)
-            {
-                break; // Tuning complete!
-            }
-            else
-            {
-                si4703_registers[rCHANNEL] &= ~CHANN_MASK; // Clear out the channel bits
-                si4703_registers[rCHANNEL] |= newChannel;  // Mask in the new channel
-                si4703_registers[rCHANNEL] |= TUNE;        // Set the TUNE bit to start
-                updateRegisters();
-            }
+            if (readRegisters(true) != I2cBusController::kOK)
+                return false;
+            if (((si4703_registers[rSTATUSRSSI] & STC) != 0) == expected)
+                return true;
+            delay(1);
         }
-
-        readRegisters();
-        si4703_registers[rCHANNEL] &= ~TUNE; // Clear the tune after a tune has completed
-        updateRegisters();
-
-        // Wait for the si4703 to clear the STC as well
-        while (1)
-        {
-            readRegisters();
-            if ((si4703_registers[rSTATUSRSSI] & STC) == 0)
-            {
-                return true; // Tuning complete!
-            }
-            else
-            {
-                si4703_registers[rCHANNEL] &= ~TUNE; // Clear the tune after a tune has completed
-                updateRegisters();
-            }
-        }
-    }
-
-    return false;
+        return false;
+    };
+    const bool tuned = updateRegisters(true) == I2cBusController::kOK && waitForCompletionBit(true);
+    si4703_registers[rCHANNEL] &= ~TUNE;
+    if (updateRegisters(true) != I2cBusController::kOK || !tuned)
+        return false;
+    return waitForCompletionBit(false);
 }
 
 void Si4703::seekUp()
@@ -343,6 +318,9 @@ uint8_t Si4703::readRegisters(bool ignoreErrors)
         //			}
         //		}
     }
+
+    if (result != I2cBusController::kOK)
+        return result;
 
     // Remember, register 0x0A comes in first so we have to shuffle the array around a bit
     int dataIdx = 0;

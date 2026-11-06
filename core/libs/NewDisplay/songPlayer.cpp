@@ -655,7 +655,9 @@ void cSongPlayer::drawTrackNames()
                 ? controlData->normalTracksNames + (track * controlData->normalTracksNamesBuffLen)
                 : controlData->midiTracksNames + ((track - controlData->normalTracksCount) *
                                                   controlData->midiTracksNamesBuffLen);
-            int16_t txtLen = strlen(text);
+            const size_t nameCapacity = track < controlData->normalTracksCount
+                ? controlData->normalTracksNamesBuffLen : controlData->midiTracksNamesBuffLen;
+            const size_t txtLen = strnlen(text, nameCapacity);
 
             API_BITMAP_HANDLE(nameFont->handle);
             API_BEGIN(BITMAPS);

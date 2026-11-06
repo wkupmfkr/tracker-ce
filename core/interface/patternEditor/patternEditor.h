@@ -266,7 +266,9 @@ class cPatternEditor : public ModuleBase
     // parametry
     char cTempo[7];
     char cPattern[5];
-    char cLength[5];
+    char cLength[16];
+    char trackLoopLabel[16];
+    bool editTrackLoop = false;
     char cStep[5];
     char cTitlePattern[PATTERN_NAME_LENGTH + 1];
 

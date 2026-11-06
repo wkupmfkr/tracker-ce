@@ -407,6 +407,13 @@ void cPerformEngine::loadCCValuesOnAffectedTracks(uint8_t slot)
 
     slotsTempValues[slot] = slotToCCValue[slot];
 
+    const uint8_t fx = slotToFx[slot];
+    if (fxList[fx]->setup->acceptsGlobalCC)
+    {
+        loadGlobalFxValue(fx, slotsTempValues[slot]);
+        return;
+    }
+
     for (uint8_t track = 0; track < kPerformanceTracks; track++)
     {
         if (tracksPerformanceState[track] == 1)

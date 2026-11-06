@@ -124,8 +124,12 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
+#ifdef FEATURE_SYNTH
+const uint8_t FX_COUNT = 47;
+#else
 const uint8_t FX_COUNT = 46;
-const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fxów na końcu listy jest ukrytych
+#endif
+const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fx처w na ko흦cu listy jest ukrytych
 
 const uint8_t FX_VALUE_MAX = 127;
 
@@ -390,7 +394,7 @@ enum instrumentPlayMode
     playModePingpong,
     playModeSlice,
     playModeBeatSlice,
-    playModeWavetable, // tylko na uzytek interface - sample type obsługuje to w silniku
+    playModeWavetable, // tylko na uzytek interface - sample type obs흢uguje to w silniku
     playModeGranular,
     playModeCount
 };
@@ -961,6 +965,20 @@ struct strMtValues
 
     SynthPartSettings synthPart[kSynthInstrumentsCount];
 
+    // Bytes 0..1 of this reserved field belong to MIDI input mapping.
+    // Tagged settings preserve the size of the project on disk.
+    bool hasMixerBuses() const { return midiInstrument[0].reserved[2] == 0xB2; }
+    uint8_t busVolume() const {
+        const auto value = midiInstrument[0].reserved[3];
+        return hasMixerBuses() && value <= 100 ? value : DEFAULT_DRY_MIX_VOLUME;
+    }
+    uint8_t busMuteBits() const { return hasMixerBuses() ? midiInstrument[0].reserved[4] : 0; }
+    void setBusSettings(uint8_t volume, uint8_t mutes) {
+        auto* bytes = midiInstrument[0].reserved;
+        bytes[3] = volume;
+        bytes[4] = mutes;
+        bytes[2] = 0xB2;
+    }
     uint8_t recorderGainUsb;
     void setDefaultTrackName(int trackIdx);
 };
@@ -1114,7 +1132,9 @@ struct strMtConfig
         uint8_t font;
         uint8_t previewVolume;
         uint8_t recThreshold;
+        uint8_t rootGuideOff; // previously tail padding
     } general;
+    static_assert(sizeof(strGeneralValues) == 18, "Keep saved general settings compatible");
 
     struct strInterfaceState
     {
@@ -1157,7 +1177,7 @@ struct strMtConfig
 
     } common;
 
-    // /\ dodawac nowe wartosci do podstruktur powyżej na końcach każdej ze struktur
+    // /\ dodawac nowe wartosci do podstruktur powy탉ej na ko흦cach ka탉dej ze struktur
     // \/ jesli chcemy dodawac nowe podstruktury wymagana jest edycja mtConfig.cpp
 };
 

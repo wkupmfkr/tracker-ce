@@ -1,3 +1,6 @@
+#include "midiInputMap.h"
+#include "mtAudioEngine.h"
+#include "fileManager.h"
 #include "mtSequencer.h"
 
 #include "configEditor/configEditor.h"
@@ -87,6 +90,98 @@ uint8_t isIncomingChannelDesired(uint8_t chan)
     return (mtConfig.midi.notesInChannel == chan || mtConfig.midi.notesInChannel == 0);
 }
 
+#ifdef FEATURE_SYNTH
+static bool dispatchMappedNote(bool usb, byte channel, byte pitch, byte velocity)
+{
+    const int instrument = midiInputMap::instrument(channel);
+    if (instrument < 0)
+        return false;
+    const int transposed = clamp<int>(pitch + 12 * (mtConfig.midi.middleC - 2), 0, 127);
+    const int16_t source = midiInputMap::source(usb, channel, pitch);
+    if (sequencer.isRec() || (isEditMode() && !sequencer.isPlay() && mtInterface.isPatternScreenActive() &&
+                              mtPopups.getStepPopupState() == stepPopupNone))
+    {
+        sendSelection();
+        sequencer.handleNoteOn(Sequencer::GRID_OUTSIDE_PATTERN, transposed, velocity,
+                               source + midiInputMap::kSourceCount, instrument);
+        patternEditor.refreshPatternFromOutsideModule();
+    }
+    else
+        sequencer.playRoutedNote(instrument, transposed, velocity, source);
+    return true;
+}
+
+// Sample destinations are live instruments. Apply their basic controls to the
+// assigned instrument itself, independently of which editor is on screen.
+static void setMappedSampleCC(int instrument, byte number, byte value)
+{
+    auto& sample = mtProject.instrument[instrument];
+    uint32_t mask;
+    switch (number)
+    {
+        case cInstrumentEditor::kVolume:
+            sample.volume = mapClamped<int>(value, 0, 127, 0, MAX_INSTRUMENT_VOLUME);
+            mask = VOLUME_MASK;
+            break;
+        case cInstrumentEditor::kPanning:
+            sample.panning = mapClamped<int>(value, 0, 127, PANNING_MIN, PANNING_MAX);
+            mask = PANNING_MASK;
+            break;
+        case cInstrumentEditor::kCutoff:
+            sample.cutOff = mapClamped<float>(value, 0, 127, MIN_CUTOFF, MAX_CUTOFF);
+            mask = CUTOFF_MASK;
+            break;
+        case cInstrumentEditor::kResonance:
+            sample.resonance = mapClamped<float>(value, 0, 127, RESONANCE_MIN, RESONANCE_MAX);
+            mask = RESONANCE_MASK;
+            break;
+        case cInstrumentEditor::kDelaySend:
+            sample.delaySend = mapClamped<int>(value, 0, 127, SEND_MIN, SEND_MAX);
+            mask = DELAY_SEND_MASK;
+            break;
+        case cInstrumentEditor::kReverbSend:
+            sample.reverbSend = mapClamped<int>(value, 0, 127, SEND_MIN, SEND_MAX);
+            mask = REVERB_SEND_MASK;
+            break;
+        default: return;
+    }
+    for (int track = 0; track < kSampleTracks; ++track)
+        if (instrumentPlayer[track].currentInstrument_idx == instrument)
+            instrumentPlayer[track].setRefreshBit(mask);
+    newFileManager.setInstrumentStructChanged(instrument);
+}
+
+// Translate only for synth targets. The same high CCs control finetune on samples.
+static void handleSynthInputCC(int instrument, byte number, byte value)
+{
+    if (number == cInstrumentEditor::kDelaySend)
+        number = cInstrumentEditor::kSynthDelaySend;
+    else if (number == cInstrumentEditor::kReverbSend)
+        number = cInstrumentEditor::kSynthReverbSend;
+
+    if (number < cInstrumentEditor::kMacro1 || number > cInstrumentEditor::kSynthGain)
+        return;
+    IE->handleSynthParamControlChange(instrumentIdxToSynthIdx(instrument),
+            static_cast<cInstrumentEditor::SynthInstrumentParamsCC>(number), value);
+    if (sequencer.recordMappedSynthCC(instrument, number, value))
+        patternEditor.refreshPatternFromOutsideModule();
+}
+
+static bool dispatchMappedCC(bool usb, byte channel, byte number, byte value)
+{
+    const int instrument = midiInputMap::instrument(channel);
+    if (instrument < 0)
+        return false;
+    if (number == 123 || number == 120)
+        sequencer.releaseRoutedChannel(midiInputMap::source(usb, channel, 0));
+    else if (isSampleInstrument(instrument))
+        setMappedSampleCC(instrument, number, value);
+    else
+        handleSynthInputCC(instrument, number, value);
+    return true;
+}
+#endif
+
 void handleJackNoteOn(byte channel, byte pitch, byte velocity)
 {
     //	Serial.printf("ON\tch: %d, pitch: %d, velo: %d \r\n", channel, pitch,
@@ -106,6 +201,10 @@ void handleJackNoteOn(byte channel, byte pitch, byte velocity)
         if (isIncomingChannelDesired(channel))
         {
 
+#ifdef FEATURE_SYNTH
+            if (dispatchMappedNote(false, channel, pitch, velocity))
+                return;
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
@@ -150,6 +249,10 @@ void handleUsbNoteOn(byte channel, byte pitch, byte velocity)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef FEATURE_SYNTH
+            if (dispatchMappedNote(true, channel, pitch, velocity))
+                return;
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
@@ -184,11 +287,19 @@ void handleJackNoteOff(byte channel, byte pitch, [[maybe_unused]] byte velocity)
     //	Serial.printf("OFF\tch: %d, pitch: %d, velo: %d\r\n", channel, pitch,
     //					velocity);
 
+#ifdef FEATURE_SYNTH
+    if (channel >= 1 && channel <= 16 && sequencer.releaseMappedInput(midiInputMap::source(false, channel, pitch)))
+        return;
+#endif
     if (mtConfig.midi.notesInMode == notesIn_jack ||
         mtConfig.midi.notesInMode == notesIn_usb_and_jack)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef FEATURE_SYNTH
+            if (midiInputMap::instrument(channel) >= 0)
+                return;
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
@@ -230,11 +341,19 @@ void handleUsbNoteOff(byte channel, byte pitch, [[maybe_unused]] byte velocity)
     //	Serial.printf("OFF\tch: %d, pitch: %d, velo: %d\r\n", channel, pitch,
     //					velocity);
 
+#ifdef FEATURE_SYNTH
+    if (channel >= 1 && channel <= 16 && sequencer.releaseMappedInput(midiInputMap::source(true, channel, pitch)))
+        return;
+#endif
     if (mtConfig.midi.notesInMode == notesIn_usb ||
         mtConfig.midi.notesInMode == notesIn_usb_and_jack)
     {
         if (isIncomingChannelDesired(channel))
         {
+#ifdef FEATURE_SYNTH
+            if (midiInputMap::instrument(channel) >= 0)
+                return;
+#endif
             int8_t transp = 12 * (mtConfig.midi.middleC - 2);
             pitch = clamp(pitch + transp, 0, 127);
 
@@ -281,7 +400,14 @@ void handleJackControlChange(byte channel, byte number, byte value)
 
         changeMixerOnMidiCC(number, value);
 
-        IE->onControlChangeReceive(number, value);
+#ifdef FEATURE_SYNTH
+        if (dispatchMappedCC(false, channel, number, value))
+            return;
+        if (isSynthInstrument(mtProject.values.lastUsedInstrument))
+            handleSynthInputCC(mtProject.values.lastUsedInstrument, number, value);
+        else
+#endif
+            IE->onControlChangeReceive(number, value);
         SP->onControlChangeReceive(number, value);
     }
 }
@@ -298,7 +424,14 @@ void handleUSBControlChange(byte channel, byte number, byte value)
 
         changeMixerOnMidiCC(number, value);
 
-        IE->onControlChangeReceive(number, value);
+#ifdef FEATURE_SYNTH
+        if (dispatchMappedCC(true, channel, number, value))
+            return;
+        if (isSynthInstrument(mtProject.values.lastUsedInstrument))
+            handleSynthInputCC(mtProject.values.lastUsedInstrument, number, value);
+        else
+#endif
+            IE->onControlChangeReceive(number, value);
         SP->onControlChangeReceive(number, value);
     }
 }

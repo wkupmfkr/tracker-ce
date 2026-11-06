@@ -221,12 +221,13 @@ void cSongEditor::lightUpPadBoard()
     padsBacklight.clearGlobalPads(0, 1, 1);
 
     bool isBeatSlice =
+      mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
       mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
 
     if (isBeatSlice)
     {
         for (uint8_t pad = 0;
-             pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
+             pad < interfacePadsCount && pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
              pad++)
         {
             padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
@@ -1140,6 +1141,7 @@ static void functPads(uint8_t pad, uint8_t state, int16_t)
     }
 
     bool isBeatSlice =
+      mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
       mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
     if (state == buttonPress)
     {

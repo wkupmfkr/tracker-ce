@@ -178,6 +178,7 @@ class Sequencer
             FX_TYPE_R1,
             FX_TYPE_GRANULAR_LENGTH = FX_TYPE_R1,
             FX_TYPE_R2,
+            FX_TYPE_SYNTH_GAIN = FX_TYPE_R2,
             FX_TYPE_R3,
             FX_TYPE_R7,
             FX_TYPE_R8,
@@ -290,7 +291,8 @@ class Sequencer
             uint16_t size;                // = 0;					// rozmiar
         } header;
 
-        float tempoRezerwa; // = 100.0;
+        // Same four bytes as the legacy unused tempo field. Only tagged patterns opt in.
+        uint32_t loopMaskTag;
         float swingRez;     // = 50.0;
 
         uint8_t rezerwa1; // = 0;
@@ -332,6 +334,35 @@ class Sequencer
             } step[MAXSTEP + 1];
 
         } track[kAllTracks];
+
+        static constexpr uint32_t loopTag = 0x504c0000;
+        bool taggedLoops() const {
+            return (loopMaskTag >> 16) == (loopTag >> 16) && rezerwa4 == 0xa5;
+        }
+        void initLoops() {
+            if (taggedLoops()) return;
+            loopMaskTag = loopTag;
+            rezerwa2 = 0;
+            rezerwa4 = 0xa5;
+        }
+        uint8_t resetBars() const { return taggedLoops() && rezerwa2 <= 64 ? rezerwa2 : 0; }
+        bool hasTrackLoop(int row) const {
+            return taggedLoops() && (loopMaskTag & (1u << row));
+        }
+        uint8_t trackLastStep(int row) const {
+            const uint8_t master = track[0].length;
+            if (!hasTrackLoop(row)) return master;
+            const uint8_t last = row == 0 ? rezerwa1 : track[row].length;
+            return last < master ? last : master;
+        }
+        void setTrackLoop(int row, uint8_t last) {
+            const uint32_t bit = 1u << row;
+            initLoops();
+            if (last < track[0].length) loopMaskTag |= bit;
+            else loopMaskTag &= ~bit;
+            if (row == 0) rezerwa1 = last;
+            else track[row].length = last;
+        }
 
         uint32_t crc;
     };
@@ -625,6 +656,9 @@ class Sequencer
     void tick(float intervalSeconds);
 
     bool isPlay(void);
+    int displayedLoopStep(int row) const {
+        return player.isPlay && usesTrackLoop(row) ? soundingStep(row) : -1;
+    }
     bool isRec(void);
 
     uint8_t isRecArmedOnTrack(uint8_t track);
@@ -738,6 +772,10 @@ class Sequencer
     bool copyCurrentPatternToBuff(uint8_t* srcBuff);
 
     void switchRamPatternsNow();
+    bool resetTrackLoopsPending() const { return loopResetPending; }
+    void queueTrackLoopReset() {
+        if (player.isPlay && !player.selectionMode && !player.performanceMode) loopResetPending = true;
+    }
     void switchPerformanceTrackNow(uint8_t trackToSwitch);
     void setTrackToLoadOnSwitch(uint8_t track, uint8_t sourcePattern);
     void setTrackToLoadNow(uint8_t track, uint8_t sourcePattern);
@@ -895,7 +933,14 @@ class Sequencer
     bool isFirstPatternStep(void);
     bool isLastPatternStep(void);
 
-    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source);
+#ifdef FEATURE_SYNTH
+    void playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source);
+    bool releaseRoutedNote(int16_t source);
+    bool releaseMappedInput(int16_t source);
+    bool recordMappedSynthCC(int instrument, uint8_t number, uint8_t value);
+    void releaseRoutedChannel(int16_t firstSource);
+#endif
+    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source, int mappedInstrument = -1);
     void handleNoteOff(byte channel, byte pitch, byte volume, int16_t source);
     void updateTrackLengths(strPattern* pattern);
 
@@ -1016,6 +1061,21 @@ class Sequencer
 
     uint8_t recMicrotiming();
     uint8_t recVelocity();
+    uint8_t cyclePos[kAllTracks]{};
+    bool loopResetPending = false;
+    bool trackPhaseReset = false;
+    uint16_t stepInBar = 0;
+    uint16_t barsSinceReset = 0;
+    void advanceLoopReset();
+    void startLoopClock(uint16_t step);
+
+    bool usesTrackLoop(int row) const {
+        return !player.selectionMode && !player.performanceMode && (trackPhaseReset || currentPattern->hasTrackLoop(row));
+    }
+    int soundingStep(int row) const {
+        if (!usesTrackLoop(row)) return player.track[row].actual_pos;
+        return cyclePos[row] % (currentPattern->trackLastStep(row) + 1);
+    }
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);

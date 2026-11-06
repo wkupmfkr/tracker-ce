@@ -411,8 +411,8 @@ void cInstrumentEditor::setEffectScreenFunct()
     ip->clearButtonsRange(interfaceButton0, interfaceButton7);
     ip->setButtonObj(interfaceButton0, buttonPress, functEffectSelectOverdrive);
     ip->setButtonObj(interfaceButton1, buttonPress, functEffectSelectBitDepth);
-    ip->setButtonObj(interfaceButton2, buttonPress, functEffectSelectReverb);
-    ip->setButtonObj(interfaceButton3, buttonPress, functEffectSelectDelay);
+    ip->setButtonObj(interfaceButton3, buttonPress, functEffectSelectReverb);
+    ip->setButtonObj(interfaceButton2, buttonPress, functEffectSelectDelay);
     ip->setButtonObj(interfaceButton4, buttonPress, functOpenInstrumentSynthesizer);
 
     ip->setButtonObj(interfaceButton7, buttonPress, functEffectBack);
@@ -428,8 +428,8 @@ void cInstrumentEditor::changeParamValue(int value, ValueChangeSource source)
         {
             case 0: cInstrumentEditor::changeParamsOverdrive(value); break;
             case 1: cInstrumentEditor::changeParamsBitDepth(value); break;
-            case 2: cInstrumentEditor::changeParamsReverbSend(value); break;
-            case 3: cInstrumentEditor::changeParamsDelaySend(value); break;
+            case 3: cInstrumentEditor::changeParamsReverbSend(value); break;
+            case 2: cInstrumentEditor::changeParamsDelaySend(value); break;
             default: break;
         }
         return;
@@ -942,8 +942,8 @@ static void functDelete(uint8_t state)
             {
                 case 0: IE->setDefaultOverdrive(); break;
                 case 1: IE->setDefaultBitDepth(); break;
-                case 2: IE->setDefaultReverbSend(); break;
-                case 3: IE->setDefaultDelaySend(); break;
+                case 3: IE->setDefaultReverbSend(); break;
+                case 2: IE->setDefaultDelaySend(); break;
             }
 
             return;
@@ -2209,7 +2209,8 @@ bool cInstrumentEditor::isParamShown(int synthPartIdx, SynthInstrumentParamsCC p
 
     std::optional<mtInstrumentEditorMode> modeForParam = paramToMode(paramCcId);
 
-    return modeForParam.has_value() && mode == modeForParam.value() &&
+    return isSynthInstrument(mtProject.values.lastUsedInstrument) &&
+           modeForParam.has_value() && mode == modeForParam.value() &&
            synthPartIdx == instrumentIdxToSynthIdx(mtProject.values.lastUsedInstrument);
 }
 
@@ -2224,9 +2225,9 @@ std::optional<mtInstrumentEditorMode> cInstrumentEditor::paramToMode(
         case SynthInstrumentParamsCC::kMacro4:
         case SynthInstrumentParamsCC::kMacro5:
         case SynthInstrumentParamsCC::kMacro6:
+            return mtInstrumentEditorMode::mtInstEditModeSynthMacros;
         case SynthInstrumentParamsCC::kSynthReverbSend:
         case SynthInstrumentParamsCC::kSynthDelaySend:
-            return mtInstrumentEditorMode::mtInstEditModeSynthMacros;
         case SynthInstrumentParamsCC::kSynthGain:
         case SynthInstrumentParamsCC::kSynthPanning:
             return mtInstrumentEditorMode::mtInstEditModeSynth;
@@ -2840,7 +2841,7 @@ void cInstrumentEditor::lightUpPadBoard()
     if (isBeatSlice)
     {
         for (uint8_t pad = 0;
-             pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
+             pad < interfacePadsCount && pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
              pad++)
         {
             padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
@@ -2866,7 +2867,8 @@ static void functMiniMiddle(uint8_t state)
     // Hold is set to button function with Press state . We have to handle it by rejecting
     // repetitive states if we don't want hold.
 
-    if (mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
+    if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
+        mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
     {
         int note = mtProject.instrument[mtProject.values.lastUsedInstrument].selectedSlice +
                    FIRST_BEAT_SLICE_NOTE;
@@ -3097,13 +3099,13 @@ void cInstrumentEditor::setDefaultValue(uint8_t place)
 
 static void functEffectSelectReverb()
 {
-    IE->selectedPlaceSends = 2;
+    IE->selectedPlaceSends = 3;
     IE->showSendScreenFrame();
 }
 
 static void functEffectSelectDelay()
 {
-    IE->selectedPlaceSends = 3;
+    IE->selectedPlaceSends = 2;
     IE->showSendScreenFrame();
 }
 

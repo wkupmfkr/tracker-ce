@@ -432,6 +432,25 @@ void cHorizontalTracker::playHead()
             API_END();
         }
     }
+    API_SAVE_CONTEXT();
+    API_COLOR(colors[2]);
+    API_LINE_WIDTH(16);
+    API_BEGIN(RECTS);
+    for (int row = 0; row < visibleTracksCount; ++row)
+    {
+        const auto rows = tracks->loopMarkerRows[firstVisibleTrack + row];
+        if (!rows) continue;
+        const int y = posY + stepsNumbersHight + row * trackHight + 2;
+        for (int col = 0; col < visibleStepsCount; ++col)
+        {
+            if (!(rows & (1u << (col + stepsDataStructOffset)))) continue;
+            const int x = trackHeadWidth + col * stepWidth + 3;
+            API_VERTEX2F(x, y);
+            API_VERTEX2F(x + stepWidth - 6, y + 3);
+        }
+    }
+    API_END();
+    API_RESTORE_CONTEXT();
 }
 
 void cHorizontalTracker::calculateSelection()

@@ -306,6 +306,7 @@ const char* const fxDescriptions[FX_COUNT] = {
     "\n0379: Min6  037A: Min7"
     "\n0479: Maj6  047A: Maj7"
     "\n047B: MajMaj7",
+    "Sets synth gain from -96 to +12 dB (0 to 127).",
     // Sequencer::strFxConsts::enFxType::FX_TYPE_BREAK_PATTERN,
     "Destination: Pattern \n\n"
     "Breaks current pattern playback and jumps to the next pattern.",

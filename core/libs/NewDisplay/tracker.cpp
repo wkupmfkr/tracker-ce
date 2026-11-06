@@ -564,6 +564,25 @@ void cTracker::playHead()
             API_END();
         }
     }
+    API_SAVE_CONTEXT();
+    API_COLOR(colors[2]);
+    API_LINE_WIDTH(16);
+    API_BEGIN(RECTS);
+    for (int col = 0; col < columnsCount; ++col)
+    {
+        const auto rows = tracks->loopMarkerRows[tracks->firstVisibleTrack + col];
+        if (!rows) continue;
+        const int x = rightOffset + col * tracksWidth + 2;
+        for (int row = 0; row < rowCount; ++row)
+        {
+            if (!(rows & (1u << row))) continue;
+            const int y = posY + row * stepHight + 3;
+            API_VERTEX2F(x, y);
+            API_VERTEX2F(x + 3, y + stepHight - 6);
+        }
+    }
+    API_END();
+    API_RESTORE_CONTEXT();
 }
 
 void cTracker::calculateSelection()

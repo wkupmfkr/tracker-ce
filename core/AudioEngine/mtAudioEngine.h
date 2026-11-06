@@ -64,6 +64,21 @@ class audioEngine
     void refreshOutputSourceOutsideTheRecorder();
     void forceUsbGainOutsideTheRecorder();
 #endif
+    // Sources 0..7 are sample tracks and 8..10 are synth parts.
+    // Output indices follow MixerAndFxs (Dry, Delay, Reverb, Line In).
+    static uint16_t patternSoloTracks;
+    static bool patternTrackExcluded(unsigned track) {
+        return patternSoloTracks && !(patternSoloTracks & (1u << track));
+    }
+    uint16_t soloSources = 0;
+    uint8_t soloOutputs = 0;
+    static constexpr uint16_t sampleGroupSolo = 1u << 11;
+    bool sourceExcluded(int n) const {
+        const unsigned mask = (1u << n) | (n < 8 ? sampleGroupSolo : 0u);
+        return (n < 8 && patternTrackExcluded(n)) || (soloSources && !(soloSources & mask));
+    }
+    bool outputExcluded(int n) const { return soloOutputs && !(soloOutputs & (1u << n)); }
+    void refreshBusGains();
     void refreshTrackVolume();
     void refreshReverbVolume();
     void refreshDelayVolume();

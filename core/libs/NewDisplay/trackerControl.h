@@ -54,6 +54,7 @@ struct strTrackerPattern
 
     uint8_t inactive[kTrackCount];
 
+    uint16_t loopMarkerRows[kTrackCount];
     bool showTrackNames;
     const char* tracksNames[kTrackCount];
 
@@ -61,6 +62,7 @@ struct strTrackerPattern
     {
         for (uint8_t t = 0; t < kTrackCount; t++)
         {
+            loopMarkerRows[t] = 0;
             for (uint8_t r = 0; r < 15; r++)
             {
                 for (int i = 0; i < 5; i++)

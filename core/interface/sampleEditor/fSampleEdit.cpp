@@ -189,6 +189,12 @@ void cSampleEditor::start([[maybe_unused]] uint32_t options)
         {
             loadModularEffectUI(PtfxManager::getActiveHeader());
         }
+        else
+        {
+            selectedEffectListIdx = 0;
+            currentEffectIdx = 0;
+            currentEffect = sampleEditorEffect[0];
+        }
     }
     currentEffect->undoParams.isEnable = false;
 
@@ -568,6 +574,9 @@ bool cSampleEditor::isParametersScreen()
 
 bool cSampleEditor::canApplyCurrentEffect() const
 {
+    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+        return false;
+
     bool hasSampleData = (editorInstrument != nullptr &&
                           editorInstrument->isActive &&
                           editorInstrument->sample.length > 0) ||
@@ -626,6 +635,11 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
                                  [[maybe_unused]] uint8_t velocity,
                                  int16_t source)
 {
+    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount ||
+        !editorInstrument->isActive || !editorInstrument->sample.length ||
+        !sampleEditorSampleMemory.address[mtEffect::Channel::kLeft])
+        return;
+
     if (mtPadBoard.getEmptyVoice() == 0)
     {
         SE->needRefreshPlayhead = 1;
@@ -643,7 +657,8 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
 
     for (int channel = 0; channel < strSampleMemory::Channel::kCount; channel++)
     {
-        addresses.push_back(sampleEditorSampleMemory.address[channel] + addressShift);
+        auto* data = sampleEditorSampleMemory.address[channel];
+        addresses.push_back(data ? data + addressShift : nullptr);
     }
 
     uint8_t vol = mtProject.instrument[mtProject.values.lastUsedInstrument].volume;
@@ -1323,6 +1338,12 @@ void cSampleEditor::modSelectedEffect(int16_t val)
             if (PtfxManager::loadPlugin(currentModularPluginIdx, sampleEditorModular))
             {
                 loadModularEffectUI(PtfxManager::getActiveHeader());
+            }
+            else
+            {
+                selectedEffectListIdx = 0;
+                currentEffectIdx = 0;
+                currentEffect = sampleEditorEffect[0];
             }
             reloadCurrentEffect();
 
