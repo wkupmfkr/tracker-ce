@@ -556,7 +556,8 @@ bool Sequencer::duplicatePattern()
     for (int trackIdx = 0; trackIdx < kAllTracks; trackIdx++)
     {
         int trackLen = oldPatternMaxStep + 1;
-        currentPattern->track[trackIdx].length = newPatternLength;
+        if (trackIdx == 0 || !currentPattern->hasTrackLoop(trackIdx))
+            currentPattern->track[trackIdx].length = newPatternLength;
 
         for (int stepIdx = 0; stepIdx < trackLen; stepIdx++)
         {
@@ -581,7 +582,8 @@ bool Sequencer::expandPattern()
 
     for (int trackIdx = 0; trackIdx < kAllTracks; trackIdx++)
     {
-        currentPattern->track[trackIdx].length = patternLength;
+        if (trackIdx == 0 || !currentPattern->hasTrackLoop(trackIdx))
+            currentPattern->track[trackIdx].length = patternLength;
 
         for (int stepIdx = 0; stepIdx < patternLength; stepIdx += 2)
         {
@@ -623,7 +625,8 @@ bool Sequencer::shrinkPattern()
             clearStep(&currentPattern->track[trackIdx].step[s]);
         }
 
-        currentPattern->track[trackIdx].length = newPatternMaxStep;
+        if (trackIdx == 0 || !currentPattern->hasTrackLoop(trackIdx))
+            currentPattern->track[trackIdx].length = newPatternMaxStep;
     }
 
     return true;
@@ -1387,6 +1390,8 @@ void Sequencer::setPatternHeader(strPattern* patt)
 void Sequencer::clearPattern(strPattern* patt)
 {
 
+    patt->loopMaskTag = 0;
+    patt->header.trackSpeedHi = 0;
     patt->swingRez = 0.0;
     patt->rezerwa1 = 0;
     patt->rezerwa2 = 0;
@@ -1428,6 +1433,32 @@ void Sequencer::insert(strSelection* selection)
         clearStep(&currentPattern->track[t].step[selection->firstStep],
                   ELEMENTS_ALL_NO_PREFERENCES);
     }
+}
+
+void Sequencer::rotateSelection(int direction, bool wholeTracks)
+{
+    if (!isSelectionCorrect(&selection) || !direction) return;
+    bool saved = false;
+    for (int t = selection.firstTrack; t <= selection.lastTrack; ++t)
+    {
+        const int first = wholeTracks ? 0 : selection.firstStep;
+        const int last = wholeTracks ? currentPattern->trackLastStep(t) : selection.lastStep;
+        if (last <= first) continue;
+        if (!saved) { newFileManager.storePatternUndoRevision(); saved = true; }
+        auto* steps = currentPattern->track[t].step;
+        const auto edge = steps[direction > 0 ? last : first];
+        if (direction > 0)
+        {
+            for (int s = last; s > first; --s) steps[s] = steps[s - 1];
+            steps[first] = edge;
+        }
+        else
+        {
+            for (int s = first; s < last; ++s) steps[s] = steps[s + 1];
+            steps[last] = edge;
+        }
+    }
+    if (saved) newFileManager.setActualPatternStructChanged();
 }
 
 void Sequencer::insertReversed(strSelection* selection)
@@ -1768,6 +1799,7 @@ AUDIO_CORE_RAM int16_t Sequencer::getFxMax(uint8_t fxID, bool forRandom)
         case fx.FX_TYPE_SEND_CC_C:
         case fx.FX_TYPE_SEND_CC_D:
         case fx.FX_TYPE_SEND_CC_E:
+        case fx.FX_TYPE_SYNTH_GAIN:
         case fx.FX_TYPE_SEND_CC_F: return 127;
 
         case fx.FX_TYPE_FILTER_LFO:
@@ -2070,7 +2102,7 @@ char Sequencer::getRollTypeChar(uint8_t val)
 }
 AUDIO_CORE_RAM uint8_t Sequencer::calcStepLength(uint8_t track, uint8_t step)
 {
-    uint8_t trackLen = getActualPattern()->track[0].length;
+    uint8_t trackLen = usesTrackLoop(track) ? currentPattern->trackLastStep(track) : getActualPattern()->track[0].length;
 
     uint8_t b = 1;
     for (uint8_t a = step + 1; a <= trackLen; a++, b++)
@@ -2086,6 +2118,7 @@ AUDIO_CORE_RAM uint8_t Sequencer::calcStepLength(uint8_t track, uint8_t step)
 
 AUDIO_CORE_RAM uint8_t Sequencer::isTrackEngineMuted(uint8_t track)
 {
+    if (engine.patternTrackExcluded(track)) return 1;
     return isSampleTrack(track) ? mtProject.values.trackMute[track]
                                 : mtProject.values.midiTrackMute[track % 8];
 }

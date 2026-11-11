@@ -1,6 +1,8 @@
 #ifdef FEATURE_SYNTH
 
 #include "synth_PolySynth.h"
+#include "mtAudioEngine.h"
+#include "mtStructs.h"
 #include "PolySynth/sdk/SynthVoiceSDK.h"
 
 #include "PolySynth/Instrument.h"
@@ -99,6 +101,14 @@ AUDIO_CORE_RAM void PolySynth::update(void)
           std::span<polysynth::AudioBufferRef>(tempSendsBufArray),
           partIdx);
 
+        // Keep the envelopes running while muted, including during offline rendering.
+        if ((mtProject.values.busMuteBits() & (1u << partIdx)) || engine.sourceExcluded(8 + partIdx))
+        {
+            tempBufSendsCommonLeft.fill(0);
+            tempBufSendsCommonRight.fill(0);
+            if (hasSends)
+                for (auto& send : tempBufSend) send.fill(0);
+        }
         const bool reuseUnmodifiedMono = (!hasSends && !isStereo && gainDB[partIdx] == 0.0f);
         if (!reuseUnmodifiedMono)
         {

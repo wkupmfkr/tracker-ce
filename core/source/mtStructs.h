@@ -124,8 +124,12 @@ const uint8_t PATTERN_INDEX_MIN = 1;
 const uint8_t PATTERN_INDEX_MAX = 255;
 
 const uint8_t FX_MAX = 49;
+#ifdef FEATURE_SYNTH
+const uint8_t FX_COUNT = 47;
+#else
 const uint8_t FX_COUNT = 46;
-const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fxów na końcu listy jest ukrytych
+#endif
+const uint8_t FX_COUNT_HIDDEN_FXes = 1; // ile fx처w na ko흦cu listy jest ukrytych
 
 const uint8_t FX_VALUE_MAX = 127;
 
@@ -390,7 +394,7 @@ enum instrumentPlayMode
     playModePingpong,
     playModeSlice,
     playModeBeatSlice,
-    playModeWavetable, // tylko na uzytek interface - sample type obsługuje to w silniku
+    playModeWavetable, // tylko na uzytek interface - sample type obs흢uguje to w silniku
     playModeGranular,
     playModeCount
 };
@@ -597,6 +601,15 @@ enum SaturationType
 struct strInstrument
 {
     uint8_t isActive;
+    // Former alignment padding: tagged root-key metadata, serialized with the instrument.
+    // No member initializer: legacy instruments and startup initialization stay unchanged.
+    uint8_t rootKeyTag[3];
+
+    void useC3SampleRoot() { rootKeyTag[0] = 0x4a; rootKeyTag[1] = 0x48; rootKeyTag[2] = 36; }
+    int sampleRootOffset() const {
+        if (playMode == playModeBeatSlice || playMode == playModeWavetable) return 0;
+        return rootKeyTag[0] == 0x4a && rootKeyTag[1] == 0x48 && rootKeyTag[2] == 36 ? 24 : 0;
+    }
 
     struct strSampleBankSlot
     {
@@ -961,6 +974,20 @@ struct strMtValues
 
     SynthPartSettings synthPart[kSynthInstrumentsCount];
 
+    // Bytes 0..1 of this reserved field belong to MIDI input mapping.
+    // Tagged settings preserve the size of the project on disk.
+    bool hasMixerBuses() const { return midiInstrument[0].reserved[2] == 0xB2; }
+    uint8_t busVolume() const {
+        const auto value = midiInstrument[0].reserved[3];
+        return hasMixerBuses() && value <= 100 ? value : DEFAULT_DRY_MIX_VOLUME;
+    }
+    uint8_t busMuteBits() const { return hasMixerBuses() ? midiInstrument[0].reserved[4] : 0; }
+    void setBusSettings(uint8_t volume, uint8_t mutes) {
+        auto* bytes = midiInstrument[0].reserved;
+        bytes[3] = volume;
+        bytes[4] = mutes;
+        bytes[2] = 0xB2;
+    }
     uint8_t recorderGainUsb;
     void setDefaultTrackName(int trackIdx);
 };
@@ -1114,7 +1141,9 @@ struct strMtConfig
         uint8_t font;
         uint8_t previewVolume;
         uint8_t recThreshold;
+        uint8_t rootGuideOff; // previously tail padding
     } general;
+    static_assert(sizeof(strGeneralValues) == 18, "Keep saved general settings compatible");
 
     struct strInterfaceState
     {
@@ -1157,7 +1186,7 @@ struct strMtConfig
 
     } common;
 
-    // /\ dodawac nowe wartosci do podstruktur powyżej na końcach każdej ze struktur
+    // /\ dodawac nowe wartosci do podstruktur powy탉ej na ko흦cach ka탉dej ze struktur
     // \/ jesli chcemy dodawac nowe podstruktury wymagana jest edycja mtConfig.cpp
 };
 
@@ -1275,6 +1304,16 @@ const char mtNotes[128][5] = {
     "G#8", "A8",  "A#8", "B8",  "C9",   "C#9", "D9",   "D#9", "E9",  "F9",   "F#9", "G9",  "G#9",
     "A9",  "A#9", "B9",  "C10", "C#10", "D10", "D#10", "E10", "F10", "F#10", "G10"
 };
+
+// Display only: preserve stored notes, MIDI events and synth playback pitch.
+inline const char* instrumentNoteLabel(int note, bool synth)
+{
+    if (note < 0 || note > 127) return "---";
+    if (!synth) return mtNotes[note];
+    static const char lowNotes[24][5] = {"C-2", "C#-2", "D-2", "D#-2", "E-2", "F-2", "F#-2", "G-2", "G#-2", "A-2", "A#-2", "B-2", "C-1", "C#-1", "D-1", "D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1"};
+    return note >= 24 ? mtNotes[note - 24] : lowNotes[note];
+}
+
 
 const char mtVolumes[48][4] = {
     "0",  "3",   "5",   "8",   "11",  "14",  "16",  "19",  "22",  "24",  "27",  "30",

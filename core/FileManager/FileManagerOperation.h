@@ -28,6 +28,7 @@ class FileManagerOperation
         char* filePath;
         char* fileName;
         bool ptiFile;
+        bool newC3Root; // transient import intent; committed only after WAV data loads successfully
         uint32_t fileOffset;
 
         uint16_t sourceFormat;

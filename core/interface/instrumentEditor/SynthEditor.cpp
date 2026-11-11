@@ -115,8 +115,8 @@ void cInstrumentEditor::changeSynthParamValue(int value, ValueChangeSource sourc
         case 1: changeSynthPolyphony(value); break;
         case 2: changeSynthGain(value); break;
         case 3: changeSynthPanning(value); break;
-        case 4: changeSynthReverbSend(value); break;
-        case 5: changeSynthDelaySend(value); break;
+        case 5: changeSynthReverbSend(value); break;
+        case 4: changeSynthDelaySend(value); break;
     }
 }
 
@@ -184,8 +184,8 @@ static void functSynthDelete()
         // case 1: IE->setDefaultSynthPolyphony(); break;
         case 2: IE->setDefaultSynthGain(); break;
         case 3: IE->setDefaultSynthPanning(); break;
-        case 4: IE->setDefaultSynthReverb(); break;
-        case 5: IE->setDefaultSynthDelay(); break;
+        case 5: IE->setDefaultSynthReverb(); break;
+        case 4: IE->setDefaultSynthDelay(); break;
         default: break;
     }
 }
@@ -782,8 +782,8 @@ void cInstrumentEditor::showSynthParamsScreen()
     display.setControlText(label[1], "Polyphony");
     display.setControlText(label[2], "Gain");
     display.setControlText(label[3], "Panning");
-    display.setControlText(label[4], "Reverb send");
-    display.setControlText(label[5], "Delay send");
+    display.setControlText(label[5], "Reverb send");
+    display.setControlText(label[4], "Delay send");
     display.setControlText(label[6], "Load");
     display.setControlText(label[7], "Edit");
 
@@ -957,13 +957,13 @@ void cInstrumentEditor::showSynthReverbSend(uint8_t syntPartIdx)
     float sendInDecybels =
       calcInstrumentSendsDecybelValue(mtProject.values.synthPart[syntPartIdx].reverbSend);
 
-    snprintf(labelText[4], sizeof(labelText[4]), "%0.02f dB", sendInDecybels);
+    snprintf(labelText[5], sizeof(labelText[5]), "%0.02f dB", sendInDecybels);
 
-    display.setControlText2(label[4], labelText[4]);
-    display.refreshControl(label[4]);
+    display.setControlText2(label[5], labelText[5]);
+    display.refreshControl(label[5]);
 
-    display.setControlValue(barControl[4], mtProject.values.synthPart[syntPartIdx].reverbSend);
-    display.refreshControl(barControl[4]);
+    display.setControlValue(barControl[5], mtProject.values.synthPart[syntPartIdx].reverbSend);
+    display.refreshControl(barControl[5]);
 }
 
 void cInstrumentEditor::showSynthDelaySend(uint8_t syntPartIdx)
@@ -971,13 +971,13 @@ void cInstrumentEditor::showSynthDelaySend(uint8_t syntPartIdx)
     float sendInDecybels =
       calcInstrumentSendsDecybelValue(mtProject.values.synthPart[syntPartIdx].delaySend);
 
-    snprintf(labelText[5], sizeof(labelText[5]), "%0.02f dB", sendInDecybels);
+    snprintf(labelText[4], sizeof(labelText[4]), "%0.02f dB", sendInDecybels);
 
-    display.setControlText2(label[5], labelText[5]);
-    display.refreshControl(label[5]);
+    display.setControlText2(label[4], labelText[4]);
+    display.refreshControl(label[4]);
 
-    display.setControlValue(barControl[5], mtProject.values.synthPart[syntPartIdx].delaySend);
-    display.refreshControl(barControl[5]);
+    display.setControlValue(barControl[4], mtProject.values.synthPart[syntPartIdx].delaySend);
+    display.refreshControl(barControl[4]);
 }
 
 void cInstrumentEditor::showSynthPatchName(uint8_t synthPart)

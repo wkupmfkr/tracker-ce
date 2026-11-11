@@ -209,8 +209,12 @@ bool PtfxLoader::loadPlugin(const char* filepath,
     }
 #endif
 
-    uint32_t totalCodeSize = outHeader.code_size + outHeader.bss_size;
-    if (totalCodeSize > getMaxCodeSize())
+    const uint32_t limit = getMaxCodeSize();
+    if (outHeader.code_size < 2 || outHeader.code_size > limit ||
+        outHeader.bss_size > limit - outHeader.code_size ||
+        (outHeader.init_offset & ~1u) > outHeader.code_size - 2 ||
+        (outHeader.set_param_offset & ~1u) > outHeader.code_size - 2 ||
+        (outHeader.process_block_offset & ~1u) > outHeader.code_size - 2)
     {
         fs->closeFile(fileHandle);
         return false;
@@ -255,7 +259,7 @@ bool PtfxLoader::loadPlugin(const char* filepath,
     }
 
     // Synchronize cache: clean & invalidate D-cache to RAM, invalidate I-cache
-    syncInstructionCache(codeBuf, totalCodeSize);
+    syncInstructionCache(codeBuf, outHeader.code_size + outHeader.bss_size);
 
     // Compute ARM Cortex-M Thumb-2 entry points (bit 0 set to 1)
     uintptr_t base = reinterpret_cast<uintptr_t>(codeBuf);

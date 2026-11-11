@@ -3,6 +3,7 @@
 #define _TACKER_CONTROL_H_
 
 #include "displayControls.h"
+#include <type_traits>
 
 struct strTrackerPattern
 {
@@ -54,6 +55,10 @@ struct strTrackerPattern
 
     uint8_t inactive[kTrackCount];
 
+    // This object lives in NOINIT SDRAM. Initialize only from init(), after SDRAM setup.
+    uint16_t changedTrackMask;
+    bool splitPlayheads;
+    uint16_t loopMarkerRows[kTrackCount];
     bool showTrackNames;
     const char* tracksNames[kTrackCount];
 
@@ -61,6 +66,7 @@ struct strTrackerPattern
     {
         for (uint8_t t = 0; t < kTrackCount; t++)
         {
+            loopMarkerRows[t] = 0;
             for (uint8_t r = 0; r < 15; r++)
             {
                 for (int i = 0; i < 5; i++)
@@ -77,6 +83,8 @@ struct strTrackerPattern
             inactive[t] = 0;
             tracksNames[t] = nullptr;
         }
+        changedTrackMask = 0;
+        splitPlayheads = false;
         actualTrack = 0;
         actualStep = 0;
         middleVisibleStep = 0;
@@ -99,6 +107,9 @@ struct strTrackerPattern
         showTrackNames = false;
     }
 };
+
+static_assert(std::is_trivially_default_constructible<strTrackerPattern>::value,
+              "NOINIT tracker state must not run a constructor before SDRAM initialization");
 
 // ilosc znakow parametru
 const uint8_t param_length[4] = { 3, 2, 4, 4 };

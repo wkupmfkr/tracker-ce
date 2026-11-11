@@ -176,6 +176,7 @@ class cDisplay
     void step2();
     void step3();
 
+    void discardInvalidRefresh();
     bool validateCurrentUpdateData();
 
     void loadFont(const CompressedFontData* fontsData, uint8_t fontCount);

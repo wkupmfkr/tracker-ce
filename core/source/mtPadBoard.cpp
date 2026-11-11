@@ -13,9 +13,7 @@ const uint8_t padBoard[48] = {
 
 uint8_t cMtPadBoard::convertPadToNote(uint8_t pad)
 {
-    if (pad > 48)
-        pad = 48;
-    return padNotes[padBoard[pad]];
+    return getNoteFromPad(pad < 48 ? pad : 47);
 }
 
 void cMtPadBoard::configureInstrumentPlayer(uint8_t maxVoices)
@@ -183,7 +181,7 @@ uint8_t cMtPadBoard::countPadsWithNote(int8_t note, uint8_t* pads)
 
     for (uint8_t i = 0; i < 48; i++)
     {
-        if (padNotes[padBoard[i]] == note)
+        if (getNoteFromPad(i) == note)
         {
             pads[i] = 1;
             count++;
@@ -205,6 +203,12 @@ uint8_t cMtPadBoard::getNoteFromPad(int8_t pad, [[maybe_unused]] bool isBeatSlic
     }
 #endif
     if (pad == INTERFACE_BUTTON_PREVIEW)
-        return 60;
-    return padNotes[padBoard[pad]];
+    {
+        const int instrument = mtProject.values.lastUsedInstrument;
+        return isSampleInstrument(instrument) ? 60 - mtProject.instrument[instrument].sampleRootOffset() : 60;
+    }
+    const int note = padNotes[padBoard[pad]];
+    // Local synth pads use the same C3=60 convention as their display and MIDI input.
+    // Keep the stored pad map and every sample/MIDI instrument unchanged.
+    return isSynthInstrument(mtProject.values.lastUsedInstrument) ? clamp<int>(note + 24, 0, 127) : note;
 }

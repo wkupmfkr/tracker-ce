@@ -489,6 +489,7 @@ void cDisplay::step1()
     if (refreshQueue[refreshQueueBott] < 0 || refreshQueue[refreshQueueBott] >= controlsCount ||
         controlsTable[refreshQueue[refreshQueueBott]] == nullptr)
     {
+        discardInvalidRefresh();
         return;
     }
 
@@ -667,25 +668,27 @@ void cDisplay::step3()
     updateStep = 0;
 }
 
+void cDisplay::discardInvalidRefresh()
+{
+    if (refreshQueueTop != refreshQueueBott)
+    {
+        refreshQueueBott = (refreshQueueBott + 1) % controlsRefreshQueueSize;
+        if (refreshQueueBott == synchQueuePosition || refreshQueueBott == refreshQueueTop)
+            stopAppend = false;
+    }
+    actualUpdating = nullptr;
+    actualUpdatingIndex = -1;
+    actualUpdatingStage = 0;
+    updateStep = 0;
+}
+
 bool cDisplay::validateCurrentUpdateData()
 {
     if (actualUpdatingIndex < 0 || actualUpdatingIndex >= controlsCount ||
-        actualUpdating == nullptr || actualUpdatingStage >= actualUpdating->stagesCount)
+        actualUpdating == nullptr || controlsTable[actualUpdatingIndex] != actualUpdating ||
+        actualUpdatingStage >= actualUpdating->stagesCount)
     {
-        // safety check
-        // if something is wrong with current updating control, for example it was deleted
-        // between processing steps, then move to next control
-
-        if (refreshQueueTop != refreshQueueBott)
-        {
-            refreshQueueBott++;
-            if (refreshQueueBott >= controlsRefreshQueueSize)
-            {
-                refreshQueueBott = 0;
-            }
-        }
-        updateStep = 0;
-        actualUpdatingStage = 0;
+        discardInvalidRefresh();
         return false;
     }
     return true;
@@ -913,6 +916,8 @@ void cDisplay::refreshControl(hControl handle)
     }
 
     // dodaj kontorlke do kolejki
+    if ((refreshQueueTop + 1) % controlsRefreshQueueSize == refreshQueueBott)
+        return; // All controls already have an outstanding refresh.
     refreshQueue[refreshQueueTop] = handle;
     refreshQueueTop++;
     if (refreshQueueTop >= controlsRefreshQueueSize)
@@ -944,6 +949,9 @@ void cDisplay::setClearRefreshFlag(hControl handle)
 
 void cDisplay::resetControlQueue()
 {
+    actualUpdatingStage = 0;
+    actualUpdatingIndex = -1;
+    synchQueuePosition = 0;
     stopAppend = false;
     refreshQueueTop = 0;
     refreshQueueBott = 0;
@@ -974,9 +982,11 @@ void cDisplay::processDisplayUpdateImmediate()
         return;
     }
 
+    const uint32_t started = timer->millis();
     uint8_t queuePosition = refreshQueueTop;
 
-    while (refreshQueueBott != queuePosition && refreshQueueTop != refreshQueueBott)
+    while (refreshQueueBott != queuePosition && refreshQueueTop != refreshQueueBott &&
+           static_cast<uint32_t>(timer->millis() - started) < 100)
     {
         update();
     }

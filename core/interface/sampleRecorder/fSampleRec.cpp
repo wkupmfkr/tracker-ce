@@ -284,6 +284,7 @@ void cSampleRecorder::start(uint32_t options)
     radio = platform->getRadio();
     fileSystem = platform->getFileSystem();
     isSwitchingFromMenu = false;
+    globalLastUsedInstrumentIndex = mtProject.values.lastUsedInstrument;
 
     if (sequencer.isPlay())
     {
@@ -377,8 +378,6 @@ void cSampleRecorder::start(uint32_t options)
     {
         functSwitchModule(options);
     }
-
-    globalLastUsedInstrumentIndex = mtProject.values.lastUsedInstrument;
 
     if (mtProject.values.lastUsedInstrument >= MIDI_INSTRUMENTS_START_IDX &&
         mtProject.values.lastUsedInstrument < MIDI_INSTRUMENTS_START_IDX + kMidiInstrumentsCount)
@@ -591,6 +590,12 @@ void cSampleRecorder::processPoints()
 {
 
     points.pointsType = 0;
+    if (!zoom.zoomWidth)
+    {
+        points.startPoint = -1;
+        points.endPoint = -1;
+        return;
+    }
 
     if (startPoint >= zoom.zoomStart && startPoint <= zoom.zoomEnd)
     {

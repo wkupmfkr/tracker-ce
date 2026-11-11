@@ -224,7 +224,7 @@ void InterfacePopups::reloadPadsNotes()
 {
     for (uint8_t i = 0; i < 48; i++)
     {
-        interfaceGlobals.padNamesPointer[i] = (char*)mtNotes[mtPadBoard.getNoteFromPad(i)];
+        interfaceGlobals.padNamesPointer[i] = (char*)instrumentNoteLabel(mtPadBoard.getNoteFromPad(i), isSynthInstrument(mtProject.values.lastUsedInstrument));
     }
 }
 

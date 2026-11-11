@@ -947,7 +947,7 @@ static void functConfirmRename()
             // SI->displayDelete(SI->selectedPlace);
 
             //	fileManager.setInstrumentChangeFlag(mtProject.values.lastUsedInstrument);
-            newFileManager.setInstrumentStructChanged(mtProject.values.lastUsedInstrument);
+            newFileManager.setInstrumentStructChanged(SI->selectedSlot);
 
             SI->keyboardManager.deactivateKeyboard();
         }
@@ -2089,7 +2089,7 @@ void cSampleImporter::initDeleteUnusedInstruments()
 
         for (int trackIdx = 0; trackIdx < kSampleTracks; trackIdx++)
         {
-            for (int stepIdx = 0; stepIdx < pattern->track[trackIdx].length; stepIdx++)
+            for (int stepIdx = 0; stepIdx <= pattern->track[0].length; stepIdx++)
             {
                 const struct Sequencer::strPattern::strTrack::strStep& step =
                   pattern->track[trackIdx].step[stepIdx];

@@ -4,6 +4,7 @@
 #include "songPlayerControl.h"
 #include <algorithm>
 #include <string.h>
+#include <stdio.h>
 
 #define TOTAL_BLOCKS_WIDTH 486
 #define BLOCKS_MARGIN      5
@@ -28,6 +29,7 @@ cSongPlayer::cSongPlayer(strControlProperties* properties)
     refreshStep = 0;
     listAnimationStep = 0;
     disableBar = 0;
+    groupedView = false;
 
     if (properties == nullptr)
     {
@@ -214,6 +216,62 @@ void cSongPlayer::update3()
     drawProgressLine();
 }
 
+void cSongPlayer::showGroupedList()
+{
+    // View-only grouping: never alter the song, undo history, or playback position.
+    int count = 0, selected = 0;
+    const int length = std::min<int>(list->length, 256);
+    for (int i = 0; i < length; )
+    {
+        const int begin = i++;
+        while (i < length && list->data[i] == list->data[begin]) ++i;
+        if (listPosition >= begin && listPosition < i) selected = count;
+        ++count;
+    }
+    const int shown = std::min<int>(list->linesCount, 12);
+    const int first = std::max(0, std::min(selected - shown / 2, count - shown));
+    const int x = this->posX + this->width - 203;
+    const int y = this->posY + 62;
+    API_SAVE_CONTEXT();
+    API_SCISSOR_XY(x - 4, y);
+    API_SCISSOR_SIZE(200, shown * 27);
+    int slot = 0;
+    for (int group = 0; group < count && group < first + shown; ++group)
+    {
+        const int begin = slot++;
+        while (slot < length && list->data[slot] == list->data[begin]) ++slot;
+        if (group < first) continue;
+        const int row = group - first;
+        const int n = slot - begin;
+        const int top = y + row * 27;
+        if (group == selected && !disableBar)
+        {
+            API_COLOR(controlData->isListActive ? colors[9] : colors[1]);
+            API_LINE_WIDTH(kRedFrameWidth);
+            API_BEGIN(LINE_STRIP);
+            API_VERTEX2F(x - 3, top); API_VERTEX2F(x + 190, top);
+            API_VERTEX2F(x + 190, top + 27); API_VERTEX2F(x - 3, top + 27);
+            API_VERTEX2F(x - 3, top); API_END();
+        }
+        char text[48];
+        const int pattern = list->data[begin];
+        char patternText[12];
+        snprintf(patternText, sizeof(patternText), (style & controlStyleHexNumbers) ? "P%X" : "P%d", pattern);
+        if (n > 1 && group == selected)
+            snprintf(text, sizeof(text), "%s x%d (%d/%d)", patternText, n, listPosition - begin + 1, n);
+        else if (n > 1) snprintf(text, sizeof(text), "%s x%d", patternText, n);
+        else if (list->names && list->names[begin])
+            snprintf(text, sizeof(text), "%s %.12s", patternText, list->names[begin]);
+        else snprintf(text, sizeof(text), "%s", patternText);
+        API_COLOR(colors[0]);
+        API_CMD_TEXT(x + 3, top + 13, font->handle, OPT_CENTERY, text);
+    }
+    API_RESTORE_CONTEXT();
+    list->start = listPosition;
+    listAnimationStep = 0;
+    autoRefresh = false;
+}
+
 void cSongPlayer::showList()
 {
     if (list == nullptr)
@@ -221,6 +279,19 @@ void cSongPlayer::showList()
         return;
     }
 
+    if (list->data && controlData->isEditMode && !*controlData->isEditMode)
+    {
+        groupedView = true;
+        showGroupedList();
+        return;
+    }
+    if (groupedView)
+    {
+        // Rebuild the expanded list cursor when entering REC, including near the song end.
+        list->start = listPosition;
+        setData(controlData);
+        groupedView = false;
+    }
     int16_t posY = this->posY + 62;
     int16_t width = 210;
     int16_t posX = (this->posX + this->width) - width;
@@ -655,7 +726,9 @@ void cSongPlayer::drawTrackNames()
                 ? controlData->normalTracksNames + (track * controlData->normalTracksNamesBuffLen)
                 : controlData->midiTracksNames + ((track - controlData->normalTracksCount) *
                                                   controlData->midiTracksNamesBuffLen);
-            int16_t txtLen = strlen(text);
+            const size_t nameCapacity = track < controlData->normalTracksCount
+                ? controlData->normalTracksNamesBuffLen : controlData->midiTracksNamesBuffLen;
+            const size_t txtLen = strnlen(text, nameCapacity);
 
             API_BITMAP_HANDLE(nameFont->handle);
             API_BEGIN(BITMAPS);

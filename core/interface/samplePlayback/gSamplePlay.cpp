@@ -134,7 +134,10 @@ void cSamplePlayback::initDisplayControls()
 void cSamplePlayback::showTitleBar()
 {
     titleBar->show(true);
-    titleBar->setTitle("Sample Playback");
+    titleBar->setTitle(!editorInstrument || editorInstrument->playMode == playModeBeatSlice ||
+                       editorInstrument->playMode == playModeWavetable ? "Sample Playback" :
+                       editorInstrument->sampleRootOffset() == 24 ? "Sample Playback - Root C3" :
+                                                                   "Sample Playback - Root C5");
     titleBar->showCurrentInstrumentOnRightLabel();
 }
 

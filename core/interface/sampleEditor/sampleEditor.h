@@ -255,6 +255,7 @@ class cSampleEditor : public ModuleBase
     //*******************
     //*******************CORE GRAPHIC FUNCTIONS
     virtual void initDisplayControls() override;
+    bool isTempoGridEnabled() const;
     virtual void destroyDisplayControls() {}
     void showMainScreen();
     void showEffectParamsScreen();

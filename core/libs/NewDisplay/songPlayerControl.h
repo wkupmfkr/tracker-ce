@@ -98,6 +98,8 @@ class cSongPlayer : public cDisplayControl
 
   private:
     void showList();
+    void showGroupedList();
+    bool groupedView;
     void drawTrackNames();
     void drawIcon(int pos, int row, int x, int y, int h);
     void fillBlocks();

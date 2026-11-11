@@ -162,7 +162,7 @@ void cSampleEditor::showMainScreen()
     // Labels
     display.setControlText(label[0], "Start");
     display.setControlText(label[1], "End");
-    display.setControlText(label[2], "Zoom");
+    display.setControlText(label[2], isTempoGridEnabled() ? "Zoom/Grid" : "Zoom");
     display.setControlText(label[3], "Undo");
     display.setControlText2(label[3], "");
     display.setControlText(label[4], "");

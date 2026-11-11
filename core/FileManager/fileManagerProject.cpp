@@ -48,6 +48,8 @@ void cFileManager::saveProjectFileToWorkspace()
 //-----------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------------
 
+#include "midiInputMap.h"
+
 bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProjectFile* pFile)
 {
     if (pFile->projectDataAndHeader.projectHeader.type != fileTypeProject)
@@ -127,6 +129,13 @@ bool cFileManager::loadProjectFileFormFileStruct(strMtProject* project, strProje
 
     memcpy(&project->song, &pFile->projectDataAndHeader.project.song, sizeof(strSong));
     memcpy(&project->values, &pFile->projectDataAndHeader.project.values, sizeof(strMtValues));
+#ifdef FEATURE_SYNTH
+    for (auto& midi : project->values.midiInstrument)
+    {
+        if (midi.reserved[1] != midiInputMap::kSignature || midi.reserved[0] > midiInputMap::kLastTarget)
+            midi.reserved[0] = 0;
+    }
+#endif
     //*proj=pFile.projectDataAndHeader.project;
     // mtProject.values=pFile.projectDataAndHeader.project.values;
     return true;

@@ -12,6 +12,8 @@
 #include "util_math.h"
 
 #include <cr_section_macros.h>
+#include <cmath>
+#include <algorithm>
 
 __NOINIT(EXTERNAL_RAM) strTrackerSpectrum cSampleEditor::spectrumData[2];
 __NOINIT(EXTERNAL_RAM) strEffectDisplayParams cSampleEditor::effectDisplayParamsToAdjust[editorEffectMax];
@@ -20,6 +22,7 @@ __NOINIT(EXTERNAL_RAM) strInstrument cSampleEditor::sampleEditInstrument;
 cSampleEditor sampleEditor;
 
 static cSampleEditor* SE = &sampleEditor;
+static bool tempoGridEnabled = false;
 
 static const uint16_t mainScreenFramePlaces[4][4] = {
     { (800 / 8) * 0 + 1, 424, 800 / 8 - 3, 55 },
@@ -188,6 +191,12 @@ void cSampleEditor::start([[maybe_unused]] uint32_t options)
         if (PtfxManager::loadPlugin(currentModularPluginIdx, sampleEditorModular))
         {
             loadModularEffectUI(PtfxManager::getActiveHeader());
+        }
+        else
+        {
+            selectedEffectListIdx = 0;
+            currentEffectIdx = 0;
+            currentEffect = sampleEditorEffect[0];
         }
     }
     currentEffect->undoParams.isEnable = false;
@@ -568,6 +577,9 @@ bool cSampleEditor::isParametersScreen()
 
 bool cSampleEditor::canApplyCurrentEffect() const
 {
+    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount)
+        return false;
+
     bool hasSampleData = (editorInstrument != nullptr &&
                           editorInstrument->isActive &&
                           editorInstrument->sample.length > 0) ||
@@ -626,6 +638,11 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
                                  [[maybe_unused]] uint8_t velocity,
                                  int16_t source)
 {
+    if (mtProject.values.lastUsedInstrument >= kSampleInstrumentsCount ||
+        !editorInstrument->isActive || !editorInstrument->sample.length ||
+        !sampleEditorSampleMemory.address[mtEffect::Channel::kLeft])
+        return;
+
     if (mtPadBoard.getEmptyVoice() == 0)
     {
         SE->needRefreshPlayhead = 1;
@@ -643,7 +660,8 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
 
     for (int channel = 0; channel < strSampleMemory::Channel::kCount; channel++)
     {
-        addresses.push_back(sampleEditorSampleMemory.address[channel] + addressShift);
+        auto* data = sampleEditorSampleMemory.address[channel];
+        addresses.push_back(data ? data + addressShift : nullptr);
     }
 
     uint8_t vol = mtProject.instrument[mtProject.values.lastUsedInstrument].volume;
@@ -653,7 +671,7 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
     }
 
     mtPadBoard.startNoteWithoutInstrument(
-      note + SE->editorInstrument->tuneResample,
+      clamp<int>(int(note) + SE->editorInstrument->tuneResample + SE->editorInstrument->sampleRootOffset(), MIN_NOTE, MAX_NOTE - 1),
       addresses,
       length - addressShift,
       vol,
@@ -893,6 +911,28 @@ void cSampleEditor::reloadFrameData(enScreenType s)
 }
 void cSampleEditor::reloadPointsData()
 {
+    int grid = 0;
+    if (tempoGridEnabled && editorInstrument && editorInstrument->sample.length > 0 && zoom.zoomWidth > 0)
+    {
+        const double duration = samplePosToTime(editorInstrument->sample.length);
+        const double tempo = mtProject.values.globalTempo;
+        const double visible = duration * zoom.zoomWidth / MAX_16BIT;
+        if (visible > 0 && tempo > 0)
+        {
+            // Start at sixteenth notes; thin to beats/bars when zoomed out.
+            double seconds = 15.0 / tempo;
+            while (seconds * 600.0 / visible < 12.0) seconds *= 2;
+            const double start = duration * zoom.zoomStart / MAX_16BIT;
+            const double phase = start / seconds;
+            const double next = ceil(phase - 1e-9) * seconds;
+            const double spacing = seconds * 600.0 / visible;
+            const double first = (next - start) * 600.0 / visible;
+            if (first < 600.0)
+                grid = (int(std::min(spacing, 601.0) * 16) << 16) |
+                       int(std::max(first, 0.0) * 16);
+        }
+    }
+    display.setControlValue(spectrumPoints, grid);
     if (selectedPlace[cSampleEditor::mainScreen] == cSampleEditor::startPointButton)
     {
         spectrumPointsData.selected = selectStart;
@@ -1324,6 +1364,12 @@ void cSampleEditor::modSelectedEffect(int16_t val)
             {
                 loadModularEffectUI(PtfxManager::getActiveHeader());
             }
+            else
+            {
+                selectedEffectListIdx = 0;
+                currentEffectIdx = 0;
+                currentEffect = sampleEditorEffect[0];
+            }
             reloadCurrentEffect();
 
             currentEffect->clearProcessedData();
@@ -1534,6 +1580,8 @@ void cSampleEditor::cancelGlobalPopups()
     }
 }
 
+bool cSampleEditor::isTempoGridEnabled() const { return tempoGridEnabled; }
+
 float cSampleEditor::samplePosToTime(uint32_t pos)
 {
     return pos / (44100.0 / (1 + editorInstrument->tuneResample / (-12)));
@@ -1591,11 +1639,11 @@ static void functMiniMiddle(uint8_t state)
 
     if (state == buttonPress)
     {
-        SE->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note, 100, pad);
+        SE->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - SE->editorInstrument->sampleRootOffset(), 100, pad);
     }
     else if (state == buttonRelease)
     {
-        SE->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note, 0, pad);
+        SE->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - SE->editorInstrument->sampleRootOffset(), 0, pad);
     }
 }
 
@@ -1740,6 +1788,12 @@ static void functSelectEndPoint()
 
 static void functSelectZoom()
 {
+    if (SE->buttons->isButtonPressed(interfaceButtonShift))
+    {
+        tempoGridEnabled = !tempoGridEnabled;
+        display.setControlText(SE->label[2], tempoGridEnabled ? "Zoom/Grid" : "Zoom");
+        display.refreshControl(SE->label[2]);
+    }
     SE->selectedPlace[cSampleEditor::mainScreen] = cSampleEditor::zoomButton;
 
     SE->refreshSpectrumPoints();

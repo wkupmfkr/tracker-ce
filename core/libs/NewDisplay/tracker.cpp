@@ -496,6 +496,39 @@ void cTracker::playHead()
         return;
     }
 
+    if (tracks->splitPlayheads)
+    {
+        API_SAVE_CONTEXT();
+        API_COLOR(colors[13]);
+        API_LINE_WIDTH(16);
+        API_BEGIN(RECTS);
+        for (int col = 0; col < columnsCount; ++col)
+        {
+            const auto rows = tracks->loopMarkerRows[tracks->firstVisibleTrack + col];
+            if (!rows) continue;
+            const int x = rightOffset + col * tracksWidth + 1;
+            for (int row = 0; row < rowCount; ++row)
+            {
+                if (!(rows & (1u << row))) continue;
+                const int y = posY + row * stepHight + 1;
+                API_VERTEX2F(x, y);
+                API_VERTEX2F(x + tracksWidth - 2, y + stepHight - 2);
+                if (tracks->changedTrackMask & (1u << (tracks->firstVisibleTrack + col)))
+                {
+                    API_COLOR(0x30D060);
+                    API_LINE_WIDTH(8); // EVE half-width in 1/16 px: one pixel total.
+                    API_VERTEX2F(x + 2, y + stepHight - 2);
+                    API_VERTEX2F(x + tracksWidth - 4, y + stepHight - 2);
+                    API_LINE_WIDTH(16);
+                    API_COLOR(colors[13]);
+                }
+            }
+        }
+        API_END();
+        API_RESTORE_CONTEXT();
+        return;
+    }
+
     if (tracks->playheadPosition > tracks->actualStep - 8 &&
         tracks->playheadPosition < tracks->actualStep + 8)
     {
@@ -564,6 +597,7 @@ void cTracker::playHead()
             API_END();
         }
     }
+
 }
 
 void cTracker::calculateSelection()

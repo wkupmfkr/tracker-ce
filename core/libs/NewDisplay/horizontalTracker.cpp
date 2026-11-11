@@ -365,6 +365,39 @@ void cHorizontalTracker::playHead()
         return;
     }
 
+    if (tracks->splitPlayheads)
+    {
+        API_SAVE_CONTEXT();
+        API_COLOR(colors[13]);
+        API_LINE_WIDTH(16);
+        API_BEGIN(RECTS);
+        for (int row = 0; row < visibleTracksCount; ++row)
+        {
+            const auto rows = tracks->loopMarkerRows[firstVisibleTrack + row];
+            if (!rows) continue;
+            const int y = posY + stepsNumbersHight + row * trackHight + 2;
+            for (int col = 0; col < visibleStepsCount; ++col)
+            {
+                if (!(rows & (1u << (col + stepsDataStructOffset)))) continue;
+                const int x = trackHeadWidth + col * stepWidth + 3;
+                API_VERTEX2F(x, y);
+                API_VERTEX2F(x + stepWidth - 4, y + trackHight - 4);
+                if (tracks->changedTrackMask & (1u << (firstVisibleTrack + row)))
+                {
+                    API_COLOR(0x30D060);
+                    API_LINE_WIDTH(8); // EVE half-width in 1/16 px: one pixel total.
+                    API_VERTEX2F(x + 2, y + trackHight - 4);
+                    API_VERTEX2F(x + stepWidth - 6, y + trackHight - 4);
+                    API_LINE_WIDTH(16);
+                    API_COLOR(colors[13]);
+                }
+            }
+        }
+        API_END();
+        API_RESTORE_CONTEXT();
+        return;
+    }
+
     if (tracks->playheadPosition > tracks->middleVisibleStep - actualStepPosition - 1 &&
         tracks->playheadPosition <
           tracks->middleVisibleStep + (visibleStepsCount - actualStepPosition))
@@ -432,6 +465,7 @@ void cHorizontalTracker::playHead()
             API_END();
         }
     }
+
 }
 
 void cHorizontalTracker::calculateSelection()
@@ -796,7 +830,7 @@ void cHorizontalTracker::tracksNames()
     {
         y = posY + stepsNumbersHight + (i * trackHight) + 10;
         const char* trackName = tracks->tracksNames[firstVisibleTrack + i];
-        String2Bitmaps(x, y, &fonts[3], trackName, 7, trackHeadWidth - fonts[3].width);
+        String2Bitmaps(x, y, &fonts[3], trackName, strlen(trackName), trackHeadWidth - fonts[3].width);
     }
 
     API_END();

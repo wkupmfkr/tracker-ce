@@ -624,12 +624,13 @@ void cSamplePlayback::lightUpPadBoard()
     }
 
     bool isBeatSlice =
+      mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
       mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
 
     if (isBeatSlice && mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber > 0)
     {
         for (uint8_t pad = 0;
-             pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
+             pad < interfacePadsCount && pad < mtProject.instrument[mtProject.values.lastUsedInstrument].sliceNumber;
              pad++)
         {
             padsBacklight.setBackLayer(1, mtConfig.values.padsLightBack, pad);
@@ -650,7 +651,8 @@ static void functMiniMiddle(uint8_t state)
     // Hold is set to button function with Press state . We have to handle it by rejecting
     // repetitive states if we don't want hold.
 
-    if (mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
+    if (mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
+        mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice)
     {
         int note = mtProject.instrument[mtProject.values.lastUsedInstrument].selectedSlice +
                    FIRST_BEAT_SLICE_NOTE;
@@ -676,6 +678,7 @@ static void functPads(uint8_t pad, uint8_t state, int16_t velo)
     (void)velo;
 
     bool isBeatSlice =
+      mtProject.values.lastUsedInstrument < kSampleInstrumentsCount &&
       mtProject.instrument[mtProject.values.lastUsedInstrument].playMode == playModeBeatSlice;
 
     if (state == buttonPress)
@@ -725,11 +728,11 @@ static void functButton0(uint8_t state)
 
     if (state == buttonPress)
     {
-        SP->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, 60, 127, INTERFACE_BUTTON_PREVIEW);
+        SP->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, 60 - SP->editorInstrument->sampleRootOffset(), 127, INTERFACE_BUTTON_PREVIEW);
     }
     else if (state == buttonRelease)
     {
-        SP->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, 60, 0, INTERFACE_BUTTON_PREVIEW);
+        SP->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, 60 - SP->editorInstrument->sampleRootOffset(), 0, INTERFACE_BUTTON_PREVIEW);
     }
 }
 

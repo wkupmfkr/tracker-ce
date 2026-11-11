@@ -178,6 +178,7 @@ class Sequencer
             FX_TYPE_R1,
             FX_TYPE_GRANULAR_LENGTH = FX_TYPE_R1,
             FX_TYPE_R2,
+            FX_TYPE_SYNTH_GAIN = FX_TYPE_R2,
             FX_TYPE_R3,
             FX_TYPE_R7,
             FX_TYPE_R8,
@@ -288,10 +289,12 @@ class Sequencer
             char fwVersion[4]; // { 0 }; 		// wersja fw w ktorej zapisano plik
             char fileStructureVersion[4]; // { 0 };	// wersja struktury pliku
             uint16_t size;                // = 0;					// rozmiar
+            uint16_t trackSpeedHi; // formerly header tail padding; offsets remain unchanged
         } header;
 
-        float tempoRezerwa; // = 100.0;
-        float swingRez;     // = 50.0;
+        // Same four bytes as the legacy unused tempo field. Only tagged patterns opt in.
+        uint32_t loopMaskTag;
+        union { float swingRez; uint32_t trackSpeedLo; }; // legacy reserved bytes
 
         uint8_t rezerwa1; // = 0;
         uint8_t rezerwa2; // = 0;
@@ -332,6 +335,57 @@ class Sequencer
             } step[MAXSTEP + 1];
 
         } track[kAllTracks];
+
+        // Seven ratios in 3 bits per track; old patterns remain x1 unless explicitly tagged.
+        uint8_t trackSpeed(int row) const {
+            if (row < 0 || row >= kAllTracks || !taggedLoops() || rezerwa3 != 0xC9) return 3;
+            const uint64_t packed = uint64_t(header.trackSpeedHi) << 32 | trackSpeedLo;
+            const uint8_t code = (packed >> (3 * row)) & 7;
+            return code < 7 ? code : 3;
+        }
+        void setTrackSpeed(int row, uint8_t code) {
+            if (row < 0 || row >= kAllTracks || code >= 7) return;
+            initLoops();
+            uint64_t packed = 0;
+            if (rezerwa3 == 0xC9) packed = uint64_t(header.trackSpeedHi) << 32 | trackSpeedLo;
+            else {
+                for (int t = 0; t < kAllTracks; ++t) packed |= uint64_t(3) << (3 * t);
+            }
+            packed = (packed & ~(uint64_t(7) << (3 * row))) | (uint64_t(code) << (3 * row));
+            trackSpeedLo = uint32_t(packed);
+            header.trackSpeedHi = uint16_t(packed >> 32);
+            rezerwa3 = 0xC9;
+        }
+
+        static constexpr uint32_t loopTag = 0x504c0000;
+        bool taggedLoops() const {
+            return (loopMaskTag >> 16) == (loopTag >> 16) && rezerwa4 == 0xa5;
+        }
+        void initLoops() {
+            if (taggedLoops()) return;
+            loopMaskTag = loopTag;
+            rezerwa2 = 0;
+            rezerwa3 = 0;
+            rezerwa4 = 0xa5;
+        }
+        uint8_t resetBars() const { return taggedLoops() && rezerwa2 <= 64 ? rezerwa2 : 0; }
+        bool hasTrackLoop(int row) const {
+            return taggedLoops() && (loopMaskTag & (1u << row));
+        }
+        uint8_t trackLastStep(int row) const {
+            const uint8_t master = track[0].length;
+            if (!hasTrackLoop(row)) return master;
+            const uint8_t last = row == 0 ? rezerwa1 : track[row].length;
+            return last < master ? last : master;
+        }
+        void setTrackLoop(int row, uint8_t last) {
+            const uint32_t bit = 1u << row;
+            initLoops();
+            if (last < track[0].length) loopMaskTag |= bit;
+            else loopMaskTag &= ~bit;
+            if (row == 0) rezerwa1 = last;
+            else track[row].length = last;
+        }
 
         uint32_t crc;
     };
@@ -447,7 +501,7 @@ class Sequencer
             } stepSent, stepToSend, stepContRoll;
 
             bool isActive = 1;
-            bool isRecordingArmed = 1;
+            bool isRecordingArmed = false;
 
             bool stepOpen = 0;
             bool noteOpen = 0;
@@ -625,6 +679,13 @@ class Sequencer
     void tick(float intervalSeconds);
 
     bool isPlay(void);
+    bool splitPlayheadsActive() const {
+        return player.isPlay && !player.selectionMode && !player.performanceMode &&
+               (speedClockActive || trackPhaseReset || (currentPattern->taggedLoops() && (currentPattern->loopMaskTag & 0xffffu)));
+    }
+    int displayedTrackStep(int row) const {
+        return soundingStep(row);
+    }
     bool isRec(void);
 
     uint8_t isRecArmedOnTrack(uint8_t track);
@@ -738,6 +799,21 @@ class Sequencer
     bool copyCurrentPatternToBuff(uint8_t* srcBuff);
 
     void switchRamPatternsNow();
+    static const char* trackSpeedText(uint8_t code) {
+        static const char* const labels[] = { "x0.25", "x0.5", "x0.75", "x1", "x1.5", "x2", "x4" };
+        return labels[code < 7 ? code : 3];
+    }
+    bool trackSpeedPending(int track) const {
+        return player.isPlay && !player.selectionMode && !player.performanceMode &&
+               activeTrackSpeed[track] != currentPattern->trackSpeed(track);
+    }
+    uint8_t trackRecordingMicrostep(int track) const {
+        return speedClockActive ? audioMicrostep[track] : player.track[track].uStep;
+    }
+    bool resetTrackLoopsPending() const { return loopResetPending; }
+    void queueTrackLoopReset() {
+        if (player.isPlay && !player.selectionMode && !player.performanceMode) loopResetPending = true;
+    }
     void switchPerformanceTrackNow(uint8_t trackToSwitch);
     void setTrackToLoadOnSwitch(uint8_t track, uint8_t sourcePattern);
     void setTrackToLoadNow(uint8_t track, uint8_t sourcePattern);
@@ -783,6 +859,7 @@ class Sequencer
     // SELECTION
     void insert(strSelection* selection);
     void insertReversed(strSelection* selection);
+    void rotateSelection(int direction, bool wholeTracks);
     bool backspace();
 
     void copySelectionToBuffer(strSelection* from, strSelection* to);
@@ -895,7 +972,14 @@ class Sequencer
     bool isFirstPatternStep(void);
     bool isLastPatternStep(void);
 
-    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source);
+#ifdef FEATURE_SYNTH
+    void playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source);
+    bool releaseRoutedNote(int16_t source);
+    bool releaseMappedInput(int16_t source);
+    bool recordMappedSynthCC(int instrument, uint8_t number, uint8_t value);
+    void releaseRoutedChannel(int16_t firstSource);
+#endif
+    void handleNoteOn(byte channel, byte pitch, int8_t volume, int16_t source, int mappedInstrument = -1);
     void handleNoteOff(byte channel, byte pitch, byte volume, int16_t source);
     void updateTrackLengths(strPattern* pattern);
 
@@ -1016,6 +1100,30 @@ class Sequencer
 
     uint8_t recMicrotiming();
     uint8_t recVelocity();
+    uint8_t activeTrackSpeed[kAllTracks]{};
+    uint8_t audioMicrostep[kAllTracks]{};
+    uint8_t audioCountdown[kAllTracks]{};
+    bool speedClockActive = false;
+    bool applyRatesPending = false;
+    bool audioResetPending = false;
+    void processTransportMicrostep();
+    void processScaledTrackTick();
+    void applyTrackRates(bool starting = false);
+    uint8_t cyclePos[kAllTracks]{};
+    bool loopResetPending = false;
+    bool trackPhaseReset = false;
+    uint16_t stepInBar = 0;
+    uint16_t barsSinceReset = 0;
+    void advanceLoopReset();
+    void startLoopClock(uint16_t step);
+
+    bool usesTrackLoop(int row) const {
+        return !player.selectionMode && !player.performanceMode && (speedClockActive || trackPhaseReset || currentPattern->hasTrackLoop(row));
+    }
+    int soundingStep(int row) const {
+        if (!usesTrackLoop(row)) return player.track[row].actual_pos;
+        return cyclePos[row] % (currentPattern->trackLastStep(row) + 1);
+    }
     uint8_t getDestRecordingStep(uint8_t track, bool quantize, bool noteOff = false);
 
     uint8_t getNextArpNote(strPlayer::strPlayerTrack* playerRow);

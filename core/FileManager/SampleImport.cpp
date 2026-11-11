@@ -384,7 +384,10 @@ void SampleImport::loadImportingSamplesData(FileManagerOperation::SampleLoadData
 
                 if (checkSampleValid(sampleHead))
                 {
-                    if (mtProject.instrument[instrIdx].isActive == 0)
+                    sampleImportData[instrIdx].newC3Root =
+                      !mtProject.instrument[instrIdx].isActive ||
+                      mtProject.instrument[instrIdx].sample.length == 0;
+                    if (sampleImportData[instrIdx].newC3Root)
                     {
                         newFileManager.setDefaultActiveInstrument(&mtProject.instrument[instrIdx]);
                     }
@@ -547,6 +550,10 @@ bool SampleImport::loadSampleDataToMemeory(int idx,
 
     if (loadStatus == fileTransferEnd)
     {
+        // Commit after conversion/data loading, before update() serializes the instrument.
+        // Project/PTI loads and active-instrument replacements retain their saved tuning.
+        if (!sampleImportData->ptiFile && sampleImportData->newC3Root)
+            mtProject.instrument[idx].useC3SampleRoot();
         if (sampleImportData->ptiFile)
         {
             mtProject.used_memory += currentSampleSamplesCount * 2;

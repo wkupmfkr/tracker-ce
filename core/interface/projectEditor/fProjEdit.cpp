@@ -328,6 +328,9 @@ static void functPlayAction()
 
 uint8_t cProjectEditor::loadProjectValues()
 {
+    engine.patternSoloTracks = 0;
+    engine.soloSources = 0;
+    engine.soloOutputs = 0;
 
     if (mtProject.values.isSnapToZeroEnabled > 1)
     {
@@ -763,7 +766,7 @@ void cProjectEditor::cleanupAfterSaveData()
 //==============================================================================================================
 //==============================================================================================================
 //==============================================================================================================
-// Nowe podejscie ekran główny
+// Nowe podejscie ekran g흢처wny
 static void functNewProject()
 {
     if (sequencer.isPlay())

@@ -36,6 +36,7 @@ cPoints::cPoints(strControlProperties* properties)
     width = properties->w;
     height = properties->h;
 
+    value = 0;
     setStyle(properties->style);
 }
 
@@ -66,6 +67,7 @@ void cPoints::setText(const char* text)
 
 void cPoints::setValue(int value)
 {
+    this->value = value;
 }
 
 void cPoints::setColors(const uint32_t* colors)
@@ -89,6 +91,22 @@ void cPoints::update()
     }
 
     API_SAVE_CONTEXT();
+    // Packed 1/16 pixel spacing and first visible grid line, supplied by Sample Editor.
+    const unsigned spacing = static_cast<unsigned>(value) >> 16;
+    if (spacing >= 16)
+    {
+        API_COLOR(colors[0]);
+        API_COLOR_A(75);
+        API_LINE_WIDTH(8);
+        API_BEGIN(LINES);
+        for (unsigned x = static_cast<unsigned>(value) & 0xffff; x < unsigned(width * 16); x += spacing)
+        {
+            API_VERTEX2F(posX + x / 16, posY);
+            API_VERTEX2F(posX + x / 16, posY + height);
+        }
+        API_END();
+        API_COLOR_A(255);
+    }
     API_COLOR(colors[0]);
 
     if (points->pointsType == 0)

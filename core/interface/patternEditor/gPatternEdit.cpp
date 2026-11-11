@@ -156,7 +156,7 @@ void cPatternEditor::initDisplayControls()
     prop.data = &fillStepList;
     param3PopupListControl = display.createControl<cList>(&prop);
 
-    // lista instrumentów
+    // lista instrument泥쁶
     prop.x = (800 / 8) * (4) + 1;
     prop.data = &fillInstrumentsFromList;
     intstrumentsFromPopupListControl = display.createControl<cList>(&prop);
@@ -409,6 +409,25 @@ void cPatternEditor::showLength(uint8_t forceShow)
     if (actualActionButtonsPage != 0)
         return;
 
+    if (editTrackLoop)
+    {
+        const int track = trackerPattern.actualTrack;
+        const auto* pattern = sequencer.getPatternToUI();
+        const int length = pattern->trackLastStep(track) + 1;
+        const bool pending = sequencer.resetTrackLoopsPending();
+        const int bars = pattern->resetBars();
+        char value[sizeof(cLength)];
+        snprintf(value, sizeof(value), "%d R%d%s", length, bars, pending ? "*" : "");
+        if (!forceShow && lastLength == 256 + track && strcmp(cLength, value) == 0) return;
+        lastLength = 256 + track;
+        snprintf(cLength, sizeof(cLength), "%s", value);
+        snprintf(trackLoopLabel, sizeof(trackLoopLabel), "T%d Length", track + 1);
+        display.setControlText(label[1], trackLoopLabel);
+        display.setControlText2(label[1], cLength);
+        display.refreshControl(label[1]);
+        return;
+    }
+    if (forceShow) display.setControlText(label[1], "Length");
     const char* numberFormat =
       mtConfig.general.numberingMode == NumberingMode::kHexadecimal ? "%02X" : "%d";
     uint8_t localLength = sequencer.getPatternToUI()->track[0].length + 1;
@@ -427,6 +446,18 @@ void cPatternEditor::showStep()
     if (actualActionButtonsPage != 0)
         return;
 
+    static char speedLabel[20], speedValue[16];
+    if (isEditingTrackSpeed())
+    {
+        const int t = trackerPattern.actualTrack;
+        snprintf(speedLabel, sizeof(speedLabel), "T%d Speed", t + 1);
+        snprintf(speedValue, sizeof(speedValue), "%s%s", Sequencer::trackSpeedText(sequencer.getPatternToUI()->trackSpeed(t)), sequencer.trackSpeedPending(t) ? "*" : "");
+        display.setControlText(label[2], speedLabel);
+        display.setControlText2(label[2], speedValue);
+        display.refreshControl(label[2]);
+        return;
+    }
+    display.setControlText(label[2], "Step jump");
     sprintf(cStep, "%d", mtProject.values.patternEditStep);
 
     display.setControlText2(label[2], cStep);
@@ -767,7 +798,7 @@ void cPatternEditor::refreshFillType()
 
     if (editParam == EditNote)
     {
-        display.setControlText2(label[4], (char*)&mtNotes[fillData[fillIdx].from][0]);
+        display.setControlText2(label[4], (char*)instrumentNoteLabel(fillData[fillIdx].from, isSynthInstrument(mtProject.values.lastUsedInstrument)));
         display.setControlValue(val1PopupBar, (fillData[fillIdx].from * 100) / (127));
 
         if (fillData[fillIdx].type == 0)
@@ -777,7 +808,7 @@ void cPatternEditor::refreshFillType()
         else
         {
             display.setControlValue(val2PopupBar, (fillData[fillIdx].to * 100) / (127));
-            display.setControlText2(label[5], (char*)&mtNotes[fillData[fillIdx].to][0]);
+            display.setControlText2(label[5], (char*)instrumentNoteLabel(fillData[fillIdx].to, isSynthInstrument(mtProject.values.lastUsedInstrument)));
         }
     }
     else if (editParam == EditInstr)
@@ -858,7 +889,7 @@ void cPatternEditor::refreshFillFrom()
     fillText1[0] = 0;
     if (editParam == EditNote)
     {
-        display.setControlText2(label[4], (char*)&mtNotes[fillData[fillIdx].from][0]);
+        display.setControlText2(label[4], (char*)instrumentNoteLabel(fillData[fillIdx].from, isSynthInstrument(mtProject.values.lastUsedInstrument)));
         display.setControlValue(val1PopupBar, (fillData[fillIdx].from * 100) / (127));
     }
     else if (editParam == EditInstr)
@@ -949,7 +980,7 @@ void cPatternEditor::refreshFillTo()
 
     if (editParam == EditNote)
     {
-        display.setControlText2(label[5], (char*)&mtNotes[fillData[fillIdx].to][0]);
+        display.setControlText2(label[5], (char*)instrumentNoteLabel(fillData[fillIdx].to, isSynthInstrument(mtProject.values.lastUsedInstrument)));
         display.setControlValue(val2PopupBar, (fillData[fillIdx].to * 100) / (127));
         display.refreshControl(label[5]);
     }
@@ -1191,7 +1222,10 @@ void cPatternEditor::showMuteButtons(uint8_t state, bool midiTracks)
                 topText =
                   midiTracks ? mtProject.values.midiTrackNames[i] : mtProject.values.TrackNames[i];
                 bottomText = mute ? (char*)"Unmute" : (char*)"Mute";
-                colors = mute ? display.getTheme().inactiveLabelsColors
+                const int track = i + (midiTracks ? 8 : 0);
+                if (engine.patternSoloTracks & (1u << track))
+                    bottomText = mute ? (char*)"Solo/M" : (char*)"Solo";
+                colors = (mute || engine.patternTrackExcluded(track)) ? display.getTheme().inactiveLabelsColors
                               : display.getTheme().activeLabelsColors;
             }
 

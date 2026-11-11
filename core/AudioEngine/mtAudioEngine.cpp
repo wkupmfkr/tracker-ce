@@ -51,6 +51,7 @@ std::map<uint8_t, audioEngine::SynthParam> audioEngine::fxIdToSynthParam = {
     { Sequencer::strFxConsts::FX_TYPE_PANNING, SynthParam::kPanning },
     { Sequencer::strFxConsts::FX_TYPE_DELAY_SEND, SynthParam::kDelaySend },
     { Sequencer::strFxConsts::FX_TYPE_REVERB_SEND, SynthParam::kReverbSend },
+    { Sequencer::strFxConsts::FX_TYPE_SYNTH_GAIN, SynthParam::kVolume },
     { Sequencer::strFxConsts::FX_TYPE_VOLUME, SynthParam::kVolume },
     { Sequencer::strFxConsts::FX_TYPE_SEND_CC_A, SynthParam::kMacro1 },
     { Sequencer::strFxConsts::FX_TYPE_SEND_CC_B, SynthParam::kMacro2 },
@@ -871,8 +872,20 @@ void audioEngine::forceUsbGainOutsideTheRecorder()
 }
 #endif
 
+void audioEngine::refreshBusGains()
+{
+    const auto& v = mtProject.values;
+    const float dry = (v.busMuteBits() & 8) || outputExcluded(0) ? 0.f : mixAmpLogValues[v.busVolume()];
+    for (auto* mixer : tracksAndFxsMixer)
+    {
+        mixer->gain(0, dry);
+        mixer->gain(1, v.delayMute || outputExcluded(1) ? 0.f : mixAmpLogValues[v.delayVolume]);
+        mixer->gain(2, v.reverbMute || outputExcluded(2) ? 0.f : mixAmpLogValues[v.reverbVolume]);
+    }
+}
 void audioEngine::refreshTrackVolume()
 {
+    refreshBusGains();
     for (uint8_t track = 0; track < 8; track++)
     {
         instrumentPlayer[track].setRefreshBit(VOLUME_MASK);
@@ -880,6 +893,7 @@ void audioEngine::refreshTrackVolume()
 }
 void audioEngine::refreshReverbVolume()
 {
+    refreshBusGains();
     for (uint8_t track = 0; track < 8; track++)
     {
         instrumentPlayer[track].setRefreshBit(REVERB_SEND_MASK);
@@ -890,6 +904,7 @@ void audioEngine::refreshReverbVolume()
 }
 void audioEngine::refreshDelayVolume()
 {
+    refreshBusGains();
     for (uint8_t track = 0; track < 8; track++)
     {
         instrumentPlayer[track].setRefreshBit(DELAY_SEND_MASK);
@@ -909,7 +924,7 @@ void audioEngine::refreshAllSends()
 
 void audioEngine::refreshLineInStreamVolume()
 {
-    if (mtProject.values.lineInMute)
+    if (mtProject.values.lineInMute || outputExcluded(3))
     {
         tracksAndFxsMixer[(int)MixerAndFxChannelType::kLeft]->gain(3, AMP_MUTED);
         tracksAndFxsMixer[(int)MixerAndFxChannelType::kRight]->gain(3, AMP_MUTED);
@@ -933,7 +948,7 @@ void audioEngine::refreshLineInStreamDelaySend()
 {
     float gain = AMP_MUTED;
 
-    if (!mtProject.values.lineInDelaySendMute && !mtProject.values.delayMute)
+    if (!mtProject.values.lineInDelaySendMute)
     {
         if (mtProject.values.sendsMode == sendsModePreFader)
         {
@@ -962,7 +977,7 @@ void audioEngine::refreshLineInStreamReverbSend()
 {
     float gain = AMP_MUTED;
 
-    if (!mtProject.values.lineInReverbSendMute && !mtProject.values.reverbMute)
+    if (!mtProject.values.lineInReverbSendMute)
     {
         if (mtProject.values.sendsMode == sendsModePreFader)
         {
@@ -1119,6 +1134,7 @@ AUDIO_CORE_RAM bool audioEngine::isSynthFx(uint8_t fx_id)
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_C:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_D:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_E:
+        case Sequencer::strFxConsts::FX_TYPE_SYNTH_GAIN:
         case Sequencer::strFxConsts::FX_TYPE_SEND_CC_F:
         case Sequencer::strFxConsts::FX_TYPE_REVERB_SEND: return true;
         default: return false;
@@ -1241,18 +1257,16 @@ AUDIO_CORE_RAM void audioEngine::setSynthDelaySend(int synthIdx, float value)
 
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
-        gain = mtProject.values.delayMute
-                 ? AMP_MUTED
-                 : sendsAmpLogValues[(int)value] * mixAmpLogValues[mtProject.values.delayVolume];
+        gain = sendsAmpLogValues[(int)value];
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
         float gainFromDelay =
-          sendsAmpLogValues[(int)value] * mixAmpLogValues[mtProject.values.delayVolume];
+          sendsAmpLogValues[(int)value];
         float gainFromVolume =
           polysynth::sdk::dbToAmplitude(calculateParamValue(synthIdx, SynthParam::kVolume));
 
-        gain = mtProject.values.delayMute ? AMP_MUTED : gainFromDelay * gainFromVolume;
+        gain = gainFromDelay * gainFromVolume;
     }
 
     int mixerInputIdx = 2 + 2 * kVoices + synthIdx;
@@ -1265,18 +1279,16 @@ AUDIO_CORE_RAM void audioEngine::setSynthReverbSend(int synthIdx, float value)
 
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
-        gain = mtProject.values.reverbMute
-                 ? AMP_MUTED
-                 : sendsAmpLogValues[(int)value] * mixAmpLogValues[mtProject.values.reverbVolume];
+        gain = sendsAmpLogValues[(int)value];
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
         float gainFromReverb =
-          sendsAmpLogValues[(int)value] * mixAmpLogValues[mtProject.values.reverbVolume];
+          sendsAmpLogValues[(int)value];
         float gainFromVolume =
           polysynth::sdk::dbToAmplitude(calculateParamValue(synthIdx, SynthParam::kVolume));
 
-        gain = mtProject.values.reverbMute ? AMP_MUTED : gainFromReverb * gainFromVolume;
+        gain = gainFromReverb * gainFromVolume;
     }
 
     int mixerInputIdx = 2 + 2 * kVoices + synthIdx;
@@ -1870,9 +1882,9 @@ AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
 
-        float gain = mtProject.values.delayMute
+        float gain = engine.sourceExcluded(nChannel)
                        ? AMP_MUTED
-                       : sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.delayVolume];
+                       : sendsAmpLogValues[value];
 #ifndef PLATFORM_IMX
         preDelayMixer->gain(nChannel, gain);
 #else
@@ -1882,9 +1894,9 @@ AUDIO_CORE_RAM void playerEngine ::modDelaySend(uint8_t value)
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
-        bool isMute = (mtProject.values.delayMute || mtProject.values.trackMute[nChannel]);
+        bool isMute = (mtProject.values.trackMute[nChannel] || engine.sourceExcluded(nChannel));
         float gainFromDelay =
-          sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.delayVolume];
+          sendsAmpLogValues[value];
         float gainFromVolume = getMostSignificantAmount() *
                                ampLogValues[getMostSignificantVolume()] *
                                mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
@@ -1903,9 +1915,9 @@ AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
     static constexpr int kInputsChannels = 2;
     if (mtProject.values.sendsMode == sendsModePreFader)
     {
-        float gain = mtProject.values.reverbMute
+        float gain = engine.sourceExcluded(nChannel)
                        ? AMP_MUTED
-                       : sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.reverbVolume];
+                       : sendsAmpLogValues[value];
 #ifndef PLATFORM_IMX
         prePolyverbMixer->gain(nChannel, gain);
 #else
@@ -1915,9 +1927,9 @@ AUDIO_CORE_RAM void playerEngine ::modReverbSend(uint8_t value)
     }
     else if (mtProject.values.sendsMode == sendsModePostFader)
     {
-        bool isMute = (mtProject.values.reverbMute || mtProject.values.trackMute[nChannel]);
+        bool isMute = (mtProject.values.trackMute[nChannel] || engine.sourceExcluded(nChannel));
         float gainFromReverb =
-          sendsAmpLogValues[value] * mixAmpLogValues[mtProject.values.reverbVolume];
+          sendsAmpLogValues[value];
         float gainFromVolume = getMostSignificantAmount() *
                                ampLogValues[getMostSignificantVolume()] *
                                mixAmpLogValues[mtProject.values.trackVolume[nChannel]];
@@ -2390,6 +2402,8 @@ void audioEngine::muteReverbSend(uint8_t channel, uint8_t state)
 // PERFORMANCE MODE
 
 // state = 1 mutuje
+uint16_t audioEngine::patternSoloTracks = 0;
+
 void audioEngine::muteTrack(uint8_t channel, uint8_t state)
 {
     if (channel >= 8)
@@ -2397,7 +2411,7 @@ void audioEngine::muteTrack(uint8_t channel, uint8_t state)
         return;
     }
 
-    if (state == MUTE_DISABLE)
+    if (state == MUTE_DISABLE && !sourceExcluded(channel))
     {
         instrumentPlayer[channel].muteState = 0;
     }

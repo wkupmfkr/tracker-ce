@@ -84,29 +84,18 @@ class cMasterParams : public ModuleBase
     displayMode displayType = displayMode::masterValues;
     displayMode displayTypeBeforeMasterPress = displayMode::masterValues;
 
-    enum
+    enum GlobalSlot
     {
-        delayVolumeScreenPosition,
-        reverbVolumeScreenPosition,
-        dryMixVolumeScreenPosition,
-        lineInVolumeScreenPosition,
+        sampleSlot,
 #ifdef FEATURE_SYNTH
-        synthVolumeScreenPositionStart,
-        synthVolumeScreenPositionEnd = synthVolumeScreenPositionStart + kSynthParts - 1,
+        firstSynthSlot,
+        lastSynthSlot = firstSynthSlot + kSynthParts - 1,
 #endif
-        screenPositionCount
+        drySlot, delaySlot, reverbSlot, lineInSlot, globalSlotCount
     };
-
-    static_assert(screenPositionCount <= 8);
-
-    enum
-    {
-        delayIsSolo = 10,
-        reverbIsSolo,
-        dryMixIsSolo,
-        lineInIsSolo,
-    };
-
+    static_assert(globalSlotCount <= 8);
+    uint8_t lastGlobalLevel[globalSlotCount]{};
+    void showSampleVolumeBar();
     uint8_t selectedPlaceDelay;
     uint8_t selectedPlaceReverb;
     uint8_t selectedPlaceLimiter;
@@ -185,7 +174,11 @@ class cMasterParams : public ModuleBase
     } gainReduce;
 
     uint8_t isSolo = 0;
-    int8_t soloTrack = -1;
+    bool channelSolo(int slot) const;
+    bool channelMuted(int slot) const;
+    bool channelSilent(int slot) const;
+    void toggleMixerChannel(int slot);
+    void drawBusMeters(bool force);
     char mixerLabel[8][7];
     char mixerVolumeLabel[8][12];
     char delayVolumeLabel[12];

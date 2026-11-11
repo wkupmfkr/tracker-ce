@@ -716,8 +716,8 @@ void cInstrumentEditor::showEffectScreen()
 
     display.setControlText(label[0], "Overdrive");
     display.setControlText(label[1], "Bit depth");
-    display.setControlText(label[2], "Reverb send");
-    display.setControlText(label[3], "Delay send");
+    display.setControlText(label[3], "Reverb send");
+    display.setControlText(label[2], "Delay send");
     display.setControlText(label[4], "Instrument");
     display.setControlText2(label[4], "MIDI Mapping");
 
@@ -1695,26 +1695,26 @@ void cInstrumentEditor::showParamsDelaySend()
 {
     float sendInDecybels = calcInstrumentSendsDecybelValue(editorInstrument->delaySend);
 
-    sprintf(labelText[3], "%0.02f dB", sendInDecybels);
+    sprintf(labelText[2], "%0.02f dB", sendInDecybels);
 
-    display.setControlText2(label[3], labelText[3]);
-    display.refreshControl(label[3]);
+    display.setControlText2(label[2], labelText[2]);
+    display.refreshControl(label[2]);
 
-    display.setControlValue(barControl[3], editorInstrument->delaySend);
-    display.refreshControl(barControl[3]);
+    display.setControlValue(barControl[2], editorInstrument->delaySend);
+    display.refreshControl(barControl[2]);
 }
 
 void cInstrumentEditor::showParamsReverbSend()
 {
     float sendInDecybels = calcInstrumentSendsDecybelValue(editorInstrument->reverbSend);
 
-    sprintf(labelText[2], "%0.02f dB", sendInDecybels);
+    sprintf(labelText[3], "%0.02f dB", sendInDecybels);
 
-    display.setControlText2(label[2], labelText[2]);
-    display.refreshControl(label[2]);
+    display.setControlText2(label[3], labelText[3]);
+    display.refreshControl(label[3]);
 
-    display.setControlValue(barControl[2], editorInstrument->reverbSend);
-    display.refreshControl(barControl[2]);
+    display.setControlValue(barControl[3], editorInstrument->reverbSend);
+    display.refreshControl(barControl[3]);
 }
 
 void cInstrumentEditor::showParamsOverdrive()
@@ -1862,8 +1862,8 @@ const char* const InstrumentCCNames[] = {
     "Resonance = 11",
     "Overdrive = 12",
     "Bit Depth = 13",
-    "Reverb Send = 14",
-    "Delay Send = 15",
+    "Delay Send = 14",
+    "Reverb Send = 15",
     "Volume Automation Type = 20",
     "Volume Attack - Shape LFO = 21",
     "Volume Decay - Speed LFO = 22",

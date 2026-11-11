@@ -874,7 +874,9 @@ void AudioPlayMemory::setGranularLoopMode(uint8_t type)
 
 void AudioPlayMemory::setTune(int8_t value, int8_t currentNote)
 {
-    value += mtProject.instrument[currentInstrIdx].tuneResample;
+    value = clamp<int>(int(value) + mtProject.instrument[currentInstrIdx].tuneResample +
+                       mtProject.instrument[currentInstrIdx].sampleRootOffset(),
+                       MIN_NOTE - currentNote, (MAX_NOTE - 1) - currentNote);
 
     if ((currentNote + value) > (MAX_NOTE - 1))
         value = (MAX_NOTE - 1) - currentNote;
@@ -1135,7 +1137,8 @@ void AudioPlayMemory::refreshStartParameters()
     currentGlide = glideForceFlag ? forcedGlide : mtProject.instrument[currentInstrIdx].glide;
 
     currentTune = (tuneForceFlag ? forcedTune : mtProject.instrument[currentInstrIdx].tune) +
-                  mtProject.instrument[currentInstrIdx].tuneResample;
+                  mtProject.instrument[currentInstrIdx].tuneResample +
+                  mtProject.instrument[currentInstrIdx].sampleRootOffset();
 
     currentFineTune =
       fineTuneForceFlag ? forcedFineTune : mtProject.instrument[currentInstrIdx].fineTune;
