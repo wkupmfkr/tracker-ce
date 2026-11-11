@@ -16,6 +16,22 @@ Based on upstream Tracker CE `v1.0.0`. This release supersedes PolySteps16 in th
 - **Live recording starts Unarmed:** all 16 tracks start Unarmed. In Pattern, hold **Shift and press Rec**, then use track soft buttons to arm the desired tracks; use the other bank for tracks 9–16. Multiple tracks can be armed. Choices remain during the session, reset on restart and are not saved in projects. Stopped step entry remains unchanged.
 - **Startup initialization correction:** removed an unsafe pre-SDRAM initialization introduced in the withdrawn MRoute17 development build and added a compile-time guard. This code defect was verified; it is not proof of the cause of the earlier physical-device recovery incident.
 
+### Older-project compatibility: sound versus note labels
+
+Existing projects are not automatically transposed or converted to the new sample-root convention. Compatibility here means preserving their existing playback pitch, not making all old and new instruments share the same displayed unity-rate key.
+
+| Instrument | In Trkr25 | Playback consequence |
+|---|---|---|
+| Legacy ordinary sample instrument (including legacy PTI) | Original-rate key stays C5 | An existing C5 step still plays the original sample, just as before. |
+| Same WAV newly loaded into an empty slot | Original-rate key is C3 | New C3 and legacy C5 can play the same original-rate audio, with matching tuning/playback settings. |
+| Internal synth in an older pattern | Old displayed C5 is now displayed C3 | Stored note number and sounding pitch are preserved; this is an octave-label change. |
+
+A sample's original-rate key does not identify the pitch contained in the recording: a file triggered at C5 can contain a C3 tone, a drum or any other sound. A C5 sample step sounding like a new C3 step is therefore not, by itself, evidence of a playback transposition bug.
+
+**Do not bulk-change old C5 sample steps to C3 to fix their labels:** with a legacy sample instrument, that lowers playback by two octaves. Likewise, replacing a legacy instrument with a new C3-root instrument while retaining its old C5 steps can raise playback by two octaves. Back up the project before replacing instruments or deliberately migrating note data. Replacing the WAV inside an already populated instrument retains that instrument's root. Changing Middle C affects MIDI mapping, not automatic conversion of stored sample steps. Beat Slice selects slices rather than following this ordinary-sample root convention; Wavetable is also excluded.
+
+Older firmware does not interpret the new sample-root, per-track rate or polymeter metadata. File-layout compatibility does not guarantee identical playback after downgrading. Keep the original project/instrument backup. These behaviors are code-checked; every historical project and preset has not been tested on hardware.
+
 ### Retained from PolySteps16
 
 Independent track lengths and bar-based reset; multi-solo across tracks 1–16; MIDI channel-to-instrument routing and note/CC recording; root/slice guides; the Sample / Synth 1 / Synth 2 / Synth 3 / Dry / Delay / Reverb / Line In global mixer; unified CC14 Delay and CC15 Reverb sends (synth CC116/117 aliases retained); global return CC79/80; and the FM tuner timeout fix. Performance Scenes and Mute Banks are not included.
@@ -45,6 +61,22 @@ Build, targeted ARM startup/arm-toggle checks, PTF/ELF consistency and cumulativ
 - **샘플·신스 C3 정렬:** 빈 슬롯에 새로 넣는 WAV는 Tracker C3에서 원음으로 재생됩니다. 기존 곡과 악기 음높이는 유지하고, 사용 중인 슬롯의 WAV 교체와 PTI 로드는 악기 기준을 보존합니다. Beat Slice·Wavetable은 기존대로입니다. Sample Editor/Playback 미리듣기에도 새 기준을 적용합니다. 신스는 본체 패드·패턴 표시·외부 MIDI 60 입력이 C3로 맞으며 기존 저장 노트의 소리는 유지합니다. 외부 샘플 입력도 맞추려면 **Config → MIDI → Middle C = C3**로 설정하세요. 자동 변경하지 않습니다. 이전 펌웨어는 새 루트 정보를 해석하지 못하므로 다운그레이드하면 새 C3 악기의 음높이가 달라질 수 있습니다.
 - **라이브 녹음 기본 Unarmed:** 16트랙 모두 Unarmed로 시작합니다. Pattern에서 **Shift를 누른 채 Rec → 원하는 트랙 하단 버튼**으로 암드합니다. 9–16번은 해당 뱅크에서 선택하며 다중 암드가 가능합니다. 선택은 사용 중 유지되지만 재시작하면 초기화되며 프로젝트에는 저장하지 않습니다. 정지 스텝 입력은 그대로입니다.
 - **시작 초기화 수정:** 철회한 개발판 MRoute17에 있던 SDRAM 준비 전 초기화 위험을 제거하고 재발 방지 컴파일 검사를 추가했습니다. 코드 결함은 확인됐지만 과거 실기기 복구 문제의 원인이라고 확정한 것은 아닙니다.
+
+### 이전 프로젝트 호환성: 실제 소리와 노트 표시의 차이
+
+기존 프로젝트를 열 때 노트를 자동으로 이조하거나 새 샘플 루트 기준으로 일괄 변환하지 않습니다. 여기서 호환성은 **기존 재생 음높이를 보존한다**는 뜻이지, 기존/신규 악기의 원음 키 표시를 모두 같게 만든다는 뜻은 아닙니다.
+
+| 악기 | Trkr25에서의 상태 | 실제 재생 |
+|---|---|---|
+| 기존 일반 샘플 악기·기존 PTI | 원음 키 C5 유지 | 기존 C5 스텝에서 예전과 동일한 원음 재생 |
+| 같은 WAV를 빈 슬롯에 새로 불러온 악기 | 원음 키 C3 | 튜닝·재생 조건이 같으면 신규 C3와 기존 C5가 같은 원음 재생 |
+| 이전 패턴의 내부 신스 | 예전 C5 표시가 C3로 바뀜 | 저장된 노트 번호와 실제 음높이는 유지; 옥타브 이름만 변경 |
+
+샘플의 원음 키는 녹음 파일 안의 실제 음정을 뜻하지 않습니다. C5로 재생한 파일 안에 C3 음, 드럼 또는 다른 소리가 들어 있을 수 있습니다. 따라서 기존 샘플의 C5 스텝이 새 악기의 C3와 같은 소리로 들리는 것만으로 이조 오류라고 판단할 수 없습니다.
+
+**표시를 맞추려고 기존 샘플의 C5 노트를 모두 C3로 바꾸지 마세요.** 기존 악기에서는 두 옥타브 낮아집니다. 반대로 기존 C5 스텝을 유지한 채 악기를 새 C3 기준 악기로 교체하면 두 옥타브 높아질 수 있습니다. 악기 교체나 의도적인 노트 변환 전에는 프로젝트를 별도 백업하세요. 이미 사용 중인 악기 안에서 WAV만 교체하면 그 악기의 기존 기준을 유지합니다. Middle C 설정 변경도 저장된 샘플 스텝을 자동 변환하지 않습니다. Beat Slice는 슬라이스 선택 방식이며 Wavetable도 일반 샘플의 새 루트 적용 대상에서 제외됩니다.
+
+이전 펌웨어는 새 샘플 루트·트랙별 배속·폴리미터 정보를 해석하지 못합니다. 파일 구조가 유지된다고 다운그레이드 후 같은 재생까지 보장되는 것은 아닙니다. 원본 프로젝트/악기 백업을 보관하세요. 위 동작은 코드로 확인했으며 모든 과거 프로젝트와 프리셋을 실기기로 검증한 것은 아닙니다.
 
 ### 유지되는 기능
 
