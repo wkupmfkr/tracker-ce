@@ -16,6 +16,10 @@ Based on upstream Tracker CE `v1.0.0`. This release supersedes PolySteps16 in th
 - **Live recording starts Unarmed:** all 16 tracks start Unarmed. In Pattern, hold **Shift and press Rec**, then use track soft buttons to arm the desired tracks; use the other bank for tracks 9–16. Multiple tracks can be armed. Choices remain during the session, reset on restart and are not saved in projects. Stopped step entry remains unchanged.
 - **Startup initialization correction:** removed an unsafe pre-SDRAM initialization introduced in the withdrawn MRoute17 development build and added a compile-time guard. This code defect was verified; it is not proof of the cause of the earlier physical-device recovery incident.
 
+### C3 reference and standard MIDI note numbers
+
+The C3 reference is aligned with **MIDI note number 60 (Middle C)** for interoperability with external MIDI devices and apps. Internal synth pads, pattern labels and MIDI input agree on this reference. For newly imported ordinary samples, set **Config → MIDI → Middle C = C3** so incoming MIDI 60 triggers the new C3 original-rate key. This does not detect or retune the pitch recorded inside a WAV, or transpose legacy projects. MIDI note 60 is the unambiguous reference: manufacturers may label it C3, C4 or another octave convention, so C3 itself is not a universal MIDI label.
+
 ### Older-project compatibility: sound versus note labels
 
 Existing projects are not automatically transposed or converted to the new sample-root convention. Compatibility here means preserving their existing playback pitch, not making all old and new instruments share the same displayed unity-rate key.
@@ -30,7 +34,7 @@ A sample's original-rate key does not identify the pitch contained in the record
 
 **Do not bulk-change old C5 sample steps to C3 to fix their labels:** with a legacy sample instrument, that lowers playback by two octaves. Likewise, replacing a legacy instrument with a new C3-root instrument while retaining its old C5 steps can raise playback by two octaves. Back up the project before replacing instruments or deliberately migrating note data. Replacing the WAV inside an already populated instrument retains that instrument's root. Changing Middle C affects MIDI mapping, not automatic conversion of stored sample steps. Beat Slice selects slices rather than following this ordinary-sample root convention; Wavetable is also excluded.
 
-Older firmware does not interpret the new sample-root, per-track rate or polymeter metadata. File-layout compatibility does not guarantee identical playback after downgrading. Keep the original project/instrument backup. These behaviors are code-checked; every historical project and preset has not been tested on hardware.
+Official or older firmware without the corresponding custom features does not interpret their sample-root, per-track rate or polymeter metadata. File-layout compatibility does not guarantee identical playback after downgrading. Keep the original project/instrument backup. These behaviors are code-checked; every historical project and preset has not been tested on hardware.
 
 ### Retained from PolySteps16
 
@@ -62,6 +66,10 @@ Build, targeted ARM startup/arm-toggle checks, PTF/ELF consistency and cumulativ
 - **라이브 녹음 기본 Unarmed:** 16트랙 모두 Unarmed로 시작합니다. Pattern에서 **Shift를 누른 채 Rec → 원하는 트랙 하단 버튼**으로 암드합니다. 9–16번은 해당 뱅크에서 선택하며 다중 암드가 가능합니다. 선택은 사용 중 유지되지만 재시작하면 초기화되며 프로젝트에는 저장하지 않습니다. 정지 스텝 입력은 그대로입니다.
 - **시작 초기화 수정:** 철회한 개발판 MRoute17에 있던 SDRAM 준비 전 초기화 위험을 제거하고 재발 방지 컴파일 검사를 추가했습니다. 코드 결함은 확인됐지만 과거 실기기 복구 문제의 원인이라고 확정한 것은 아닙니다.
 
+### 기준음 C3와 범용 MIDI 연동
+
+외부 MIDI 기기·앱과 맞춰 사용할 수 있도록 **기준음 C3를 MIDI 노트 번호 60(Middle C)에 맞췄습니다.** 내부 신스의 본체 패드·패턴 표시·MIDI 입력은 이 기준으로 일치합니다. 새로 불러온 일반 샘플은 **Config → MIDI → Middle C = C3**로 설정하면 외부 MIDI 60에서 새 원음 키 C3가 재생됩니다. WAV 안에 녹음된 실제 음정을 자동 분석·튜닝하거나 기존 곡을 이조하는 기능은 아닙니다. 기기마다 MIDI 60을 C3·C4 등으로 표기하므로, 공통 기준은 C3라는 이름 자체가 아니라 **MIDI 번호 60**입니다.
+
 ### 이전 프로젝트 호환성: 실제 소리와 노트 표시의 차이
 
 기존 프로젝트를 열 때 노트를 자동으로 이조하거나 새 샘플 루트 기준으로 일괄 변환하지 않습니다. 여기서 호환성은 **기존 재생 음높이를 보존한다**는 뜻이지, 기존/신규 악기의 원음 키 표시를 모두 같게 만든다는 뜻은 아닙니다.
@@ -76,7 +84,7 @@ Build, targeted ARM startup/arm-toggle checks, PTF/ELF consistency and cumulativ
 
 **표시를 맞추려고 기존 샘플의 C5 노트를 모두 C3로 바꾸지 마세요.** 기존 악기에서는 두 옥타브 낮아집니다. 반대로 기존 C5 스텝을 유지한 채 악기를 새 C3 기준 악기로 교체하면 두 옥타브 높아질 수 있습니다. 악기 교체나 의도적인 노트 변환 전에는 프로젝트를 별도 백업하세요. 이미 사용 중인 악기 안에서 WAV만 교체하면 그 악기의 기존 기준을 유지합니다. Middle C 설정 변경도 저장된 샘플 스텝을 자동 변환하지 않습니다. Beat Slice는 슬라이스 선택 방식이며 Wavetable도 일반 샘플의 새 루트 적용 대상에서 제외됩니다.
 
-이전 펌웨어는 새 샘플 루트·트랙별 배속·폴리미터 정보를 해석하지 못합니다. 파일 구조가 유지된다고 다운그레이드 후 같은 재생까지 보장되는 것은 아닙니다. 원본 프로젝트/악기 백업을 보관하세요. 위 동작은 코드로 확인했으며 모든 과거 프로젝트와 프리셋을 실기기로 검증한 것은 아닙니다.
+해당 커스텀 기능이 없는 공식/이전 펌웨어는 샘플 루트·트랙별 배속·폴리미터 정보를 해석하지 못합니다. 파일 구조가 유지된다고 다운그레이드 후 같은 재생까지 보장되는 것은 아닙니다. 원본 프로젝트/악기 백업을 보관하세요. 위 동작은 코드로 확인했으며 모든 과거 프로젝트와 프리셋을 실기기로 검증한 것은 아닙니다.
 
 ### 유지되는 기능
 
