@@ -12,6 +12,7 @@
 #include "mtPadsBacklight.h"
 #include "mtStructs.h"
 #include "util_math.h"
+#include "songRepeats.h"
 
 cSongEditor songEditor;
 
@@ -144,6 +145,9 @@ void cSongEditor::start(uint32_t options)
     lastSongListPos = -1;
     isSomethingCopied = 0;
 
+    repeatControl = 0;
+    repeatControlUsed = false;
+    playlistUndoValid = false;
     pressedSongButton = false;
     exitOnButtonRelease = 0;
 
@@ -245,7 +249,8 @@ static void functPlayPattern()
     {
         newFileManager.setSongPos(SE->selectedSongPosition);
         if (SE->buttons->isButtonPressed(interfaceButtonShift) && SE->selectedPlace == 0 &&
-            SE->songPlayerData.selection.patternSelectionLength == 1 &&
+            SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) ==
+            SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition + SE->songPlayerData.selection.patternSelectionLength - 1) &&
             SE->songPlayerData.selection.trackSelectionLength == 1) // xxx
         {
             // tylko zaznaczony track
@@ -363,187 +368,71 @@ static void functPlaySong()
 
 static void functIncPattern(uint8_t state)
 {
-    if (SE->isBusy)
-    {
-        return;
+    if (SE->isBusy || SE->exitOnButtonRelease || !SE->editMode) return;
+    if (state == buttonPress) {
+        SE->repeatControl = 6;
+        SE->repeatControlUsed = false;
+        SE->selectedPlace = 1;
+        SE->activateLabelsBorder();
+    } else if (state == buttonRelease && SE->repeatControl == 6) {
+        const bool tap = !SE->repeatControlUsed;
+        SE->repeatControl = 0;
+        if (tap) {
+            int delta = SE->buttons->isButtonPressed(interfaceButtonShift) ? -1 : 1;
+            SE->changeRepeatCount(delta);
+        }
     }
-    if (SE->exitOnButtonRelease)
-    {
-        return;
-    }
-    if (!SE->editMode)
-    {
-        return;
-    }
-    if (state == buttonRelease)
-    {
-        return;
-    }
-
-    if (SE->buttons->isButtonPressed(interfaceButtonShift))
-    {
-        SE->changeSelectedPlayListPattern(10);
-    }
-    else
-    {
-        SE->changeSelectedPlayListPattern(1);
-    }
-
-    SE->selectedPlace = 1;
-    SE->activateLabelsBorder();
 }
 
 static void functDecPattern(uint8_t state)
 {
-    if (SE->isBusy)
-    {
-        return;
+    if (SE->isBusy || SE->exitOnButtonRelease || !SE->editMode) return;
+    if (state == buttonPress) {
+        SE->repeatControl = 5;
+        SE->repeatControlUsed = false;
+        SE->selectedPlace = 1;
+        SE->activateLabelsBorder();
+    } else if (state == buttonRelease && SE->repeatControl == 5) {
+        const bool tap = !SE->repeatControlUsed;
+        SE->repeatControl = 0;
+        if (tap) {
+            int delta = SE->buttons->isButtonPressed(interfaceButtonShift) ? -1 : 1;
+            SE->changeSelectedPlayListPattern(delta);
+        }
     }
-    if (SE->exitOnButtonRelease)
-    {
-        return;
-    }
-    if (!SE->editMode)
-    {
-        return;
-    }
-    if (state == buttonRelease)
-    {
-        return;
-    }
-
-    if (SE->buttons->isButtonPressed(interfaceButtonShift))
-    {
-        SE->changeSelectedPlayListPattern(-10);
-    }
-    else
-    {
-        SE->changeSelectedPlayListPattern(-1);
-    }
-
-    SE->selectedPlace = 1;
-    SE->activateLabelsBorder();
 }
 
 static void functAddSlot()
 {
-    if (SE->isBusy)
-    {
-        return;
-    }
-    if (SE->exitOnButtonRelease)
-    {
-        return;
-    }
-    if (!SE->editMode)
-    {
-        return;
-    }
-    if (SE->songLength == SONG_MAX)
-    {
-        return;
-    }
-
-    int firstEmptyPatternIdx = 0;
-    bool firstEmptyPatternFound = false;
-    bool isShiftPressed = SE->buttons->isButtonPressed(interfaceButtonShift);
-
-    if (isShiftPressed)
-    {
-
-        for (uint8_t bitmaskIdx = 0; bitmaskIdx < PATTERN_INDEX_MAX; bitmaskIdx++)
-        {
-            uint8_t midiPatternBitmask = mtProject.values.allPatternsBitmaskMidi[bitmaskIdx];
-            if (mtProject.values.allPatternsBitmask[bitmaskIdx] > 0 ||
-                (midiPatternBitmask > 0 && midiPatternBitmask < (1 << kAllTracks)))
-            {
-                continue;
+    if (SE->isBusy || SE->exitOnButtonRelease || !SE->editMode || SE->songLength >= SONG_MAX) return;
+    if (!sequencer.isStop()) { mtPopups.showInfoPopup("Stop playback", "to add Song row"); return; }
+    const int after = SongRepeats::end(mtProject.song.playlist, SE->songLength, SE->selectedSongPosition);
+    int pattern = mtProject.song.playlist[SE->selectedSongPosition] % PATTERN_INDEX_MAX + 1;
+    if (SE->buttons->isButtonPressed(interfaceButtonShift)) {
+        pattern = 0;
+        for (int i = 0; i < PATTERN_INDEX_MAX; ++i) {
+            if (!mtProject.values.allPatternsBitmask[i] && !mtProject.values.allPatternsBitmaskMidi[i]) {
+                pattern = i + 1; break;
             }
-
-            firstEmptyPatternFound = true;
-            firstEmptyPatternIdx = bitmaskIdx + 1;
-            break;
         }
-
-        if (!firstEmptyPatternFound)
-        {
-            // empty pattern is not found
-            // todo: should we show a popup?
-            return;
-        }
+        if (!pattern) return;
     }
-
-    for (int i = SE->songLength; i > SE->selectedSongPosition; i--)
-    {
-        mtProject.song.playlist[i] = mtProject.song.playlist[i - 1];
-    }
-
-    mtProject.song.playlist[SE->selectedSongPosition + 1] =
-      (isShiftPressed && firstEmptyPatternFound)
-        ? firstEmptyPatternIdx
-        : mtProject.song.playlist[SE->selectedSongPosition];
-
-    SE->songLength++;
-
+    SE->replaceSongRange(after, after, 1, pattern);
+    SE->selectedSongPosition = after;
     SE->selectedPlace = 1;
+    SE->refreshSongPlayerSelectedSlot();
     SE->activateLabelsBorder();
-    SE->changeSongPositionSelection(1);
-
-    if (mtProject.song.playlist[SE->selectedSongPosition] == 0)
-    {
-        mtProject.song.playlist[SE->selectedSongPosition] = 1;
-    }
-
-    SE->songPlayerData.songLength = SE->songLength;
-
-    newFileManager.setProjectStructChanged();
 }
 
 static void functDeleteSlot()
 {
-    if (SE->isBusy)
-    {
-        return;
-    }
-    if (SE->exitOnButtonRelease)
-    {
-        return;
-    }
-    if (!SE->editMode)
-    {
-        return;
-    }
-    if (SE->songLength == 1)
-    {
-        return;
-    }
-
-    mtProject.song.playlist[SE->songLength] = 0;
-
-    for (int i = SE->selectedSongPosition; i < SE->songLength; i++)
-    {
-        mtProject.song.playlist[i] = mtProject.song.playlist[i + 1];
-    }
-
-    SE->songLength--;
-
+    if (SE->isBusy || SE->exitOnButtonRelease || !SE->editMode) return;
+    const int first = SongRepeats::begin(mtProject.song.playlist, SE->songLength, SE->selectedSongPosition);
+    const int last = SongRepeats::end(mtProject.song.playlist, SE->songLength, first);
+    if (last - first == SE->songLength) return; // keep a nonempty song
+    SE->replaceSongRange(first, last, 0, 1);
     SE->selectedPlace = 1;
     SE->activateLabelsBorder();
-    SE->changeSongPositionSelection(-1);
-
-    if ((SE->selectedSongPosition != SE->lastSongListPos) &&
-        (SE->lastSongListPos > SE->selectedSongPosition))
-    {
-        SE->lastSongListPos--;
-        SE->showIcon(iconLoop, SE->lastSongListPos);
-        SE->switchToNewPattern();
-
-        SE->startSongPlayer();
-    }
-
-    SE->songPlayerData.songLength = SE->songLength;
-
-    newFileManager.setProjectStructChanged();
 }
 
 void cSongEditor::tapTempo_tap()
@@ -650,6 +539,13 @@ static void functTempo(uint8_t state)
 
 static void functEncoder(int16_t value)
 {
+    if (SE->repeatControl && SE->editMode && !SE->isBusy) {
+        SE->repeatControlUsed = true;
+        if (SE->repeatControl == 6) SE->changeRepeatCount(value);
+        else SE->changeSelectedPlayListPattern(value);
+        return;
+    }
+
     if (SE->isBusy)
     {
         return;
@@ -699,6 +595,13 @@ static void functShift(uint8_t state)
 
 static void functUp()
 {
+    if (SE->repeatControl && SE->editMode && !SE->isBusy) {
+        SE->repeatControlUsed = true;
+        if (SE->repeatControl == 6) SE->changeRepeatCount(1);
+        else SE->changeSelectedPlayListPattern(1);
+        return;
+    }
+
     if (SE->isBusy)
     {
         return;
@@ -723,6 +626,13 @@ static void functUp()
 
 static void functDown()
 {
+    if (SE->repeatControl && SE->editMode && !SE->isBusy) {
+        SE->repeatControlUsed = true;
+        if (SE->repeatControl == 6) SE->changeRepeatCount(-1);
+        else SE->changeSelectedPlayListPattern(-1);
+        return;
+    }
+
     if (SE->isBusy)
     {
         return;
@@ -749,6 +659,13 @@ static void functDown()
 
 static void functLeft()
 {
+    if (SE->repeatControl && SE->editMode && !SE->isBusy) {
+        SE->repeatControlUsed = true;
+        if (SE->repeatControl == 6) SE->changeRepeatCount(-1);
+        else SE->changeSelectedPlayListPattern(-1);
+        return;
+    }
+
     if (SE->isBusy)
     {
         return;
@@ -791,6 +708,13 @@ static void functLeft()
 
 static void functRight()
 {
+    if (SE->repeatControl && SE->editMode && !SE->isBusy) {
+        SE->repeatControlUsed = true;
+        if (SE->repeatControl == 6) SE->changeRepeatCount(1);
+        else SE->changeSelectedPlayListPattern(1);
+        return;
+    }
+
     if (SE->isBusy)
     {
         return;
@@ -917,23 +841,8 @@ void cSongEditor::refreshSongPlayer(uint8_t source)
 
 void cSongEditor::changeSongPositionSelection(int16_t value)
 {
-    if (SE->editMode == 0)
-    {
-        if (!sequencer.isStop())
-        {
-            return;
-        }
-    }
-
-    value = clamp<int>(value, -5, 5);
-
-    if (selectedSongPosition + value < 0)
-        selectedSongPosition = 0;
-    else if (selectedSongPosition + value > songLength - 1)
-        selectedSongPosition = songLength - 1;
-    else
-        selectedSongPosition += value;
-
+    if (!editMode && !sequencer.isStop()) return;
+    selectedSongPosition = SongRepeats::move(mtProject.song.playlist, songLength, selectedSongPosition, value);
     refreshPatternsList();
     refreshSongPlayerSelectedSlot();
 }
@@ -942,7 +851,8 @@ void cSongEditor::changeSongPositionSelection(int16_t value)
 //==============================================================================================
 void cSongEditor::refreshEditMode()
 {
-    for (uint8_t i = 2; i < 6; i++)
+    repeatControl = 0;
+    for (uint8_t i = 2; i < 7; i++)
     {
         display.setControlColors(label[i],
                                  editMode ? display.getTheme().activeButtonLabelsColors
@@ -1103,34 +1013,81 @@ void cSongEditor::setDefaultGlobalTempo()
 
 void cSongEditor::changeSelectedPlayListPattern(int value)
 {
-    if (!SE->editMode)
-    {
+    if (!editMode || selectedPlace != 1 || !value) return;
+    const int first = SongRepeats::begin(mtProject.song.playlist, songLength, selectedSongPosition);
+    const int last = SongRepeats::end(mtProject.song.playlist, songLength, first);
+    const int pattern = clamp<int>(mtProject.song.playlist[first] + value, 1, PATTERN_INDEX_MAX);
+    if (pattern != mtProject.song.playlist[first]) replaceSongRange(first, last, last - first, pattern);
+}
+
+void cSongEditor::changeRepeatCount(int delta)
+{
+    if (!editMode || !delta) return;
+    const int first = SongRepeats::begin(mtProject.song.playlist, songLength, selectedSongPosition);
+    const int last = SongRepeats::end(mtProject.song.playlist, songLength, first);
+    const int copies = clamp<int>(last - first + delta, 1, SONG_MAX - songLength + last - first);
+    if (copies != last - first) replaceSongRange(first, last, copies, mtProject.song.playlist[first]);
+}
+
+void cSongEditor::replaceSongRange(int first, int last, int copies, uint8_t pattern)
+{
+    if (!sequencer.isStop()) {
+        mtPopups.showInfoPopup("Stop playback", "to edit Song repeats");
         return;
     }
+    // Prepare outside the critical section; publish all slots and cursor atomically.
+    uint8_t next[SONG_MAX];
+    memcpy(next, mtProject.song.playlist, SONG_MAX);
+    const int newLength = SongRepeats::replace(next, songLength, SONG_MAX, first, last, copies, pattern);
+    memcpy(playlistUndo, mtProject.song.playlist, SONG_MAX);
+    playlistUndoLength = songLength;
+    playlistUndoSelection = selectedSongPosition;
+    uint32_t irq;
+    asm volatile("mrs %0, primask\n cpsid i" : "=r"(irq) :: "memory");
+    playlistUndoPlayPosition = mtProject.song.playlistPos;
+    const int playing = SongRepeats::remap(mtProject.song.playlistPos, first, last, copies, newLength);
+    memcpy(mtProject.song.playlist, next, SONG_MAX);
+    mtProject.song.playlistPos = playing;
+    asm volatile("msr primask, %0" :: "r"(irq) : "memory");
+    playlistUndoValid = true;
+    isSomethingCopied = 0;
+    selectedSongPosition = SongRepeats::begin(next, newLength,
+        SongRepeats::remap(selectedSongPosition, first, last, copies, newLength));
+    lastSongListPos = playing;
+    songLength = newLength;
+    songPlayerData.songLength = songLength;
+    songPlayerData.selection.isActive = 0;
+    songPlayerData.selection.patternSelectionLength = 1;
+    songPlayerData.selection.startSongPosition = selectedSongPosition;
+    songPlayerData.progress.currentSongPosition = playing;
+    patternsList.icon.iconPositionInList = playing;
+    refreshPatternsList();
+    refreshSongPlayerSelectedSlot();
+    newFileManager.setProjectStructChanged();
+}
 
-    if (SE->selectedPlace == 1)
-    {
-        int patternNum = mtProject.song.playlist[SE->selectedSongPosition];
-
-        if (patternNum + value < 1)
-            patternNum = 1;
-        else if (patternNum + value > PATTERN_INDEX_MAX)
-            patternNum = PATTERN_INDEX_MAX;
-        else
-            patternNum += value;
-
-        mtProject.song.playlist[SE->selectedSongPosition] = (uint8_t)patternNum;
-
-        if (SE->selectedSongPosition == SE->lastSongListPos)
-        {
-            SE->switchToNewPattern();
-        }
-
-        SE->refreshPatternsList();
-        SE->refreshSongPlayerSelectedSlot();
-
-        newFileManager.setProjectStructChanged();
-    }
+bool cSongEditor::undoPlaylistEdit()
+{
+    if (!playlistUndoValid) return false;
+    if (!sequencer.isStop()) { mtPopups.showInfoPopup("Stop playback", "to undo Song edit"); return true; }
+    uint32_t irq;
+    asm volatile("mrs %0, primask\n cpsid i" : "=r"(irq) :: "memory");
+    memcpy(mtProject.song.playlist, playlistUndo, SONG_MAX);
+    mtProject.song.playlistPos = playlistUndoPlayPosition;
+    asm volatile("msr primask, %0" :: "r"(irq) : "memory");
+    songLength = playlistUndoLength;
+    selectedSongPosition = playlistUndoSelection;
+    lastSongListPos = playlistUndoPlayPosition;
+    playlistUndoValid = false;
+    isSomethingCopied = 0;
+    songPlayerData.songLength = songLength;
+    songPlayerData.selection.isActive = 0;
+    songPlayerData.progress.currentSongPosition = lastSongListPos;
+    patternsList.icon.iconPositionInList = lastSongListPos;
+    refreshPatternsList();
+    refreshSongPlayerSelectedSlot();
+    newFileManager.setProjectStructChanged();
+    return true;
 }
 
 static void functPads(uint8_t pad, uint8_t state, int16_t)
@@ -1205,9 +1162,9 @@ void cSongEditor::switchToNewPattern()
 void cSongEditor::selectSpecificTrack(uint8_t track, uint8_t songPosition)
 {
     songPlayerData.selection.isActive = 1;
-    songPlayerData.selection.patternSelectionLength = 1;
+    songPlayerData.selection.patternSelectionLength = SongRepeats::end(mtProject.song.playlist, songLength, songPosition) - SongRepeats::begin(mtProject.song.playlist, songLength, songPosition);
     songPlayerData.selection.trackSelectionLength = 1;
-    songPlayerData.selection.startSongPosition = songPosition;
+    songPlayerData.selection.startSongPosition = SongRepeats::begin(mtProject.song.playlist, songLength, songPosition);
     songPlayerData.selection.startTrack = track;
 
     refreshSongPlayerControl();
@@ -1219,227 +1176,57 @@ void cSongEditor::selectSongPosition(uint8_t songPosition)
       SE->songPlayerData.normalTracksCount + SE->songPlayerData.midiTracksCount;
 
     songPlayerData.selection.isActive = 1;
-    songPlayerData.selection.patternSelectionLength = 1;
+    songPlayerData.selection.patternSelectionLength = SongRepeats::end(mtProject.song.playlist, songLength, songPosition) - SongRepeats::begin(mtProject.song.playlist, songLength, songPosition);
     songPlayerData.selection.trackSelectionLength = allTracksCount;
-    songPlayerData.selection.startSongPosition = songPosition;
+    songPlayerData.selection.startSongPosition = SongRepeats::begin(mtProject.song.playlist, songLength, songPosition);
     songPlayerData.selection.startTrack = 0;
 }
 
 void cSongEditor::walkOnSongPlayer(player_direction_t dir)
 {
-    uint8_t isShiftPressed = 1;
-    songPlayerData.selection.isActive = 1;
-
-    if (SE->buttons->isButtonPressed(interfaceButtonShift) && (dir != playerHome))
-    {
-        if (songPlayerData.selection.patternSelectionLength == 0)
-        {
-            songPlayerData.selection.patternSelectionLength = 1;
-        }
-
-        if (songPlayerData.selection.trackSelectionLength == 0)
-        {
-            songPlayerData.selection.trackSelectionLength = 1;
+    auto& sel = songPlayerData.selection;
+    const bool extend = buttons->isButtonPressed(interfaceButtonShift) && dir != playerHome;
+    const auto* p = mtProject.song.playlist;
+    int firstRow = SongRepeats::row(p, songLength, sel.startSongPosition);
+    int lastRow = SongRepeats::row(p, songLength, sel.startSongPosition + std::max<int>(1, sel.patternSelectionLength) - 1);
+    int row = SongRepeats::row(p, songLength, selectedSongPosition);
+    int track = sel.startTrack;
+    if (!extend) { firstRow = lastRow = row; sel.trackSelectionLength = 1; currSelDirection = selDirRight; }
+    if (dir == playerHome) row = 0;
+    if (dir == playerUp) --row;
+    if (dir == playerDown) ++row;
+    row = clamp<int>(row, 0, SongRepeats::count(p, songLength) - 1);
+    if (dir == playerUp || dir == playerDown || dir == playerHome) {
+        if (extend) {
+            const int oldRow = SongRepeats::row(p, songLength, selectedSongPosition);
+            const int anchor = oldRow == firstRow ? lastRow : firstRow;
+            firstRow = std::min(anchor, row); lastRow = std::max(anchor, row);
+        } else firstRow = lastRow = row;
+    }
+    const int allTracks = songPlayerData.normalTracksCount + songPlayerData.midiTracksCount;
+    if (dir == playerLeft || dir == playerRight) {
+        int lastTrack = track + sel.trackSelectionLength - 1;
+        if (!extend) track = clamp<int>(track + (dir == playerLeft ? -1 : 1), 0, allTracks - 1);
+        else {
+            if (dir == playerLeft) {
+                if (currSelDirection & selDirRight) {
+                    if (lastTrack > track) --lastTrack;
+                    else currSelDirection = selDirLeft;
+                } else { currSelDirection = selDirLeft; if (track > 0) --track; }
+            } else {
+                if (currSelDirection & selDirLeft) {
+                    if (lastTrack > track) ++track;
+                    else currSelDirection = selDirRight;
+                } else { currSelDirection = selDirRight; if (lastTrack < allTracks - 1) ++lastTrack; }
+            }
+            sel.trackSelectionLength = lastTrack - track + 1;
         }
     }
-    else
-    {
-        if (songPlayerData.selection.patternSelectionLength > 1)
-        {
-            songPlayerData.selection.startSongPosition +=
-              (songPlayerData.selection.patternSelectionLength - 1);
-        }
-
-        if (songPlayerData.selection.trackSelectionLength > 1)
-        {
-            songPlayerData.selection.startTrack +=
-              (songPlayerData.selection.trackSelectionLength - 1);
-        }
-
-        songPlayerData.selection.patternSelectionLength = 1;
-        songPlayerData.selection.trackSelectionLength = 1;
-        isShiftPressed = 0;
-    }
-
-    switch (dir)
-    {
-        case playerUp:
-        {
-            if (isShiftPressed)
-            {
-                if ((currSelDirection2 & selDirDown) || (currSelDirection2 == 0))
-                {
-                    if (songPlayerData.selection.patternSelectionLength > 1)
-                    {
-                        songPlayerData.selection.patternSelectionLength--;
-                    }
-                    else
-                    {
-                        currSelDirection2 &= ~selDirDown;
-                        currSelDirection2 |= selDirUp;
-                    }
-                }
-
-                if ((currSelDirection2 & selDirUp) || (currSelDirection2 == 0))
-                {
-                    if (songPlayerData.selection.startSongPosition)
-                    {
-                        songPlayerData.selection.patternSelectionLength++;
-                        songPlayerData.selection.startSongPosition--;
-                    }
-                }
-            }
-            else
-            {
-                if (songPlayerData.selection.startSongPosition > 0)
-                {
-                    songPlayerData.selection.startSongPosition--;
-                }
-            }
-
-            break;
-        }
-        case playerDown:
-        {
-            if (isShiftPressed)
-            {
-                if ((currSelDirection2 & selDirUp) || (currSelDirection2 == 0))
-                {
-                    if (songPlayerData.selection.patternSelectionLength > 1)
-                    {
-                        songPlayerData.selection.patternSelectionLength--;
-                        songPlayerData.selection.startSongPosition++;
-                    }
-                    else
-                    {
-                        currSelDirection2 &= ~selDirUp;
-                        currSelDirection2 |= selDirDown;
-                    }
-                }
-
-                if ((currSelDirection2 & selDirDown) || (currSelDirection2 == 0))
-                {
-                    if ((songPlayerData.songLength >
-                         songPlayerData.selection.patternSelectionLength +
-                           songPlayerData.selection.startSongPosition))
-                    {
-                        songPlayerData.selection.patternSelectionLength++;
-                    }
-                }
-            }
-            else
-            {
-                if (songPlayerData.selection.startSongPosition < (songPlayerData.songLength - 1))
-                {
-                    songPlayerData.selection.startSongPosition++;
-                }
-            }
-
-            break;
-        }
-        case playerLeft:
-        {
-            if (isShiftPressed)
-            {
-                if ((currSelDirection & selDirRight) || (currSelDirection == 0))
-                {
-                    if (songPlayerData.selection.trackSelectionLength > 1)
-                    {
-                        songPlayerData.selection.trackSelectionLength--;
-                    }
-                    else
-                    {
-                        currSelDirection &= ~selDirRight;
-                        currSelDirection |= selDirLeft;
-                    }
-                }
-
-                if ((currSelDirection & selDirLeft) || (currSelDirection == 0))
-                {
-                    if (songPlayerData.selection.startTrack)
-                    {
-                        songPlayerData.selection.trackSelectionLength++;
-                        songPlayerData.selection.startTrack--;
-                    }
-                }
-            }
-            else
-            {
-                if (songPlayerData.selection.startTrack > 0)
-                {
-                    songPlayerData.selection.startTrack--;
-                }
-            }
-
-            break;
-        }
-        case playerRight:
-        {
-            const int allTracksCount =
-              SE->songPlayerData.normalTracksCount + SE->songPlayerData.midiTracksCount;
-
-            if (isShiftPressed)
-            {
-                if ((currSelDirection & selDirLeft) || (currSelDirection == 0))
-                {
-                    if (songPlayerData.selection.trackSelectionLength > 1)
-                    {
-                        if (songPlayerData.selection.startTrack < allTracksCount)
-                        {
-                            songPlayerData.selection.trackSelectionLength--;
-                            songPlayerData.selection.startTrack++;
-                        }
-                    }
-                    else
-                    {
-                        currSelDirection &= ~selDirLeft;
-                        currSelDirection |= selDirRight;
-                    }
-                }
-
-                if ((currSelDirection & selDirRight) || (currSelDirection == 0))
-                {
-                    if (songPlayerData.selection.trackSelectionLength < allTracksCount)
-                    {
-                        songPlayerData.selection.trackSelectionLength++;
-                    }
-                }
-            }
-            else
-            {
-                if (songPlayerData.selection.startTrack < allTracksCount - 1)
-                {
-                    songPlayerData.selection.startTrack++;
-                }
-            }
-
-            break;
-        }
-        case playerHome:
-        {
-            songPlayerData.selection.startSongPosition = 0;
-            break;
-        }
-        default: break;
-    }
-
-    if (isShiftPressed && (dir != playerHome)) // xxx
-    {
-        if (currSelDirection2 & selDirUp)
-        {
-            selectedSongPosition = songPlayerData.selection.startSongPosition;
-        }
-        else if (currSelDirection2 & selDirDown)
-        {
-            selectedSongPosition = songPlayerData.selection.startSongPosition +
-                                   songPlayerData.selection.patternSelectionLength - 1;
-        }
-    }
-    else
-    {
-        selectedSongPosition = songPlayerData.selection.startSongPosition;
-    }
-
+    sel.startTrack = track;
+    sel.startSongPosition = SongRepeats::slot(p, songLength, firstRow);
+    sel.patternSelectionLength = SongRepeats::end(p, songLength, SongRepeats::slot(p, songLength, lastRow)) - sel.startSongPosition;
+    sel.isActive = 1;
+    selectedSongPosition = SongRepeats::slot(p, songLength, row);
     refreshPatternsList();
     refreshSongPlayerSelectedSlot();
 }
@@ -1494,10 +1281,12 @@ static void refreshCopyPasting()
         display.processDisplayUpdateImmediate();
 
         uint8_t source =
-          mtProject.song.playlist[SE->copyCurrentData.startSongPosition + SE->currentCopyElement];
+          mtProject.song.playlist[SongRepeats::slot(mtProject.song.playlist, SE->songLength,
+              SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->copyCurrentData.startSongPosition) + SE->currentCopyElement)];
         uint8_t destination =
           mtProject.song
-            .playlist[SE->songPlayerData.selection.startSongPosition + SE->currentCopyElement];
+            .playlist[SongRepeats::slot(mtProject.song.playlist, SE->songLength,
+              SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) + SE->currentCopyElement)];
 
         if (source != 0 && destination != 0)
         {
@@ -1554,6 +1343,8 @@ static void functCopy()
 
 static void functPaste()
 {
+    if (!SE->isSomethingCopied) return;
+    SE->playlistUndoValid = false;
     if (SE->isBusy)
     {
         return;
@@ -1567,10 +1358,12 @@ static void functPaste()
 
             SE->isBusy = 1;
             SE->isCopyingInProgress = 1;
-            SE->copyElementMax = SE->copyCurrentData.patternSelectionLength;
+            SE->copyElementMax = SongRepeats::row(mtProject.song.playlist, SE->songLength,
+              SE->copyCurrentData.startSongPosition + SE->copyCurrentData.patternSelectionLength - 1) -
+              SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->copyCurrentData.startSongPosition) + 1;
 
-            while ((SE->songPlayerData.selection.startSongPosition + SE->copyElementMax) >
-                   SE->songPlayerData.songLength)
+            while ((SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) + SE->copyElementMax) >
+                   SongRepeats::count(mtProject.song.playlist, SE->songLength))
             {
                 SE->copyElementMax--;
             }
@@ -1584,10 +1377,12 @@ static void functPaste()
 
         SE->isBusy = 1;
         SE->isCopyingInProgress = 1;
-        SE->copyElementMax = SE->copyCurrentData.patternSelectionLength;
+        SE->copyElementMax = SongRepeats::row(mtProject.song.playlist, SE->songLength,
+              SE->copyCurrentData.startSongPosition + SE->copyCurrentData.patternSelectionLength - 1) -
+              SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->copyCurrentData.startSongPosition) + 1;
 
-        while ((SE->songPlayerData.selection.startSongPosition + SE->copyElementMax) >
-               SE->songPlayerData.songLength)
+        while ((SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) + SE->copyElementMax) >
+               SongRepeats::count(mtProject.song.playlist, SE->songLength))
         {
             SE->copyElementMax--;
         }
@@ -1607,6 +1402,7 @@ static void functUndo()
         return;
     }
 
+    if (SE->undoPlaylistEdit()) return;
     newFileManager.undoSongPattern();
     SE->refreshSongPlayerControl();
     patternEditor.changeActualPattern(0); // przeladuj wyswietlany pattern w patternEdicie
@@ -1650,13 +1446,16 @@ static void functDelete()
         return;
     }
 
+    SE->playlistUndoValid = false;
     if (SE->selectedPlace == 0)
     {
         SE->currentDeleteElement = 0;
 
         SE->isBusy = 1;
         SE->isDeletingInProgress = 1;
-        SE->deleteElementMax = SE->songPlayerData.selection.patternSelectionLength;
+        SE->deleteElementMax = SongRepeats::row(mtProject.song.playlist, SE->songLength,
+          SE->songPlayerData.selection.startSongPosition + SE->songPlayerData.selection.patternSelectionLength - 1) -
+          SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) + 1;
     }
     else if (SE->selectedPlace == 1)
     {
@@ -1678,7 +1477,8 @@ static void refreshDeleting()
 
         uint8_t source =
           mtProject.song
-            .playlist[SE->songPlayerData.selection.startSongPosition + SE->currentDeleteElement];
+            .playlist[SongRepeats::slot(mtProject.song.playlist, SE->songLength,
+              SongRepeats::row(mtProject.song.playlist, SE->songLength, SE->songPlayerData.selection.startSongPosition) + SE->currentDeleteElement)];
 
         newFileManager.deleteTracks((char*)"Workspace",
                                     source,

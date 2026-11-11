@@ -6,7 +6,7 @@
 typedef struct
 {
     uint8_t useSpecialIcons = 0;
-    int8_t iconPositionInList;
+    int16_t iconPositionInList;
     uint8_t iconNum;
 
 } text_icon_t;

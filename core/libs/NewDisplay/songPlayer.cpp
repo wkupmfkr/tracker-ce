@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string.h>
 #include <stdio.h>
+#include "songRepeats.h"
 
 #define TOTAL_BLOCKS_WIDTH 486
 #define BLOCKS_MARGIN      5
@@ -229,7 +230,8 @@ void cSongPlayer::showGroupedList()
         ++count;
     }
     const int shown = std::min<int>(list->linesCount, 12);
-    const int first = std::max(0, std::min(selected - shown / 2, count - shown));
+    const int first = SongRepeats::firstRow(list->data, length, listPosition, shown);
+    textListPos = first;
     const int x = this->posX + this->width - 203;
     const int y = this->posY + 62;
     API_SAVE_CONTEXT();
@@ -246,7 +248,7 @@ void cSongPlayer::showGroupedList()
         const int top = y + row * 27;
         if (group == selected && !disableBar)
         {
-            API_COLOR(controlData->isListActive ? colors[9] : colors[1]);
+            API_COLOR(controlData->isListActive ? (*controlData->isEditMode ? colors[5] : colors[9]) : colors[1]);
             API_LINE_WIDTH(kRedFrameWidth);
             API_BEGIN(LINE_STRIP);
             API_VERTEX2F(x - 3, top); API_VERTEX2F(x + 190, top);
@@ -265,6 +267,8 @@ void cSongPlayer::showGroupedList()
         else snprintf(text, sizeof(text), "%s", patternText);
         API_COLOR(colors[0]);
         API_CMD_TEXT(x + 3, top + 13, font->handle, OPT_CENTERY, text);
+        if (list->icon.useSpecialIcons && list->icon.iconPositionInList >= begin && list->icon.iconPositionInList < slot)
+            drawIcon(list->icon.iconPositionInList, row, x + 178, y + 13, 27);
     }
     API_RESTORE_CONTEXT();
     list->start = listPosition;
@@ -279,7 +283,7 @@ void cSongPlayer::showList()
         return;
     }
 
-    if (list->data && controlData->isEditMode && !*controlData->isEditMode)
+    if (list->data && controlData->isEditMode)
     {
         groupedView = true;
         showGroupedList();
@@ -783,18 +787,19 @@ void cSongPlayer::fillBlocks()
     API_LINE_WIDTH(kRedFrameWidth);
     API_BEGIN(RECTS);
 
-    int maxPatternsVisible =
-      std::max(controlData->songLength, (uint8_t)textListPos) - (uint8_t)textListPos;
-    maxPatternsVisible = std::min(maxPatternsVisible, MAX_PATTERNS_VISIBLE);
+    textListPos = SongRepeats::firstRow(controlData->songData, controlData->songLength, listPosition, MAX_PATTERNS_VISIBLE);
+    int maxPatternsVisible = std::min(SongRepeats::count(controlData->songData, controlData->songLength) - int(textListPos), MAX_PATTERNS_VISIBLE);
 
     selectionCalcInit = 0;
     const int allTracksCount = controlData->normalTracksCount + controlData->midiTracksCount;
 
     for (int pattern = 0; pattern < maxPatternsVisible; pattern++)
     {
-        uint16_t data =
-          controlData->normalPatternsBitmask[controlData->songData[textListPos + pattern] - 1] |
-          controlData->midiPatternsBitmask[controlData->songData[textListPos + pattern] - 1] << 8;
+        const int slot = SongRepeats::slot(controlData->songData, controlData->songLength, textListPos + pattern);
+        const int patternIndex = controlData->songData[slot] - 1;
+        if (patternIndex < 0 || patternIndex >= 255) continue;
+        uint16_t data = controlData->normalPatternsBitmask[patternIndex] |
+                        controlData->midiPatternsBitmask[patternIndex] << 8;
         uint16_t localY = posY + pattern * (BLOCK_HEIGHT + BLOCK_SPACING) + 64;
 
         for (int track = 0; track < allTracksCount; track++)
@@ -851,13 +856,14 @@ void cSongPlayer::drawProgressLine()
         API_LINE_WIDTH(kRedFrameWidth);
         API_BEGIN(LINES);
 
-        int16_t patternPosition = controlData->progress.currentSongPosition - textListPos;
+        int16_t patternPosition = SongRepeats::row(controlData->songData, controlData->songLength,
+                                                   controlData->progress.currentSongPosition) - textListPos;
 
         if ((patternPosition < MAX_PATTERNS_VISIBLE) && (patternPosition >= 0))
         {
             float positionInPattern =
               controlData->progress.positionInPattern *
-                (BLOCK_HEIGHT / (float)controlData->progress.patternLength) +
+                (BLOCK_HEIGHT / (float)std::max<int>(1, controlData->progress.patternLength)) +
               0.5f; // 0.5 for rounding
 
             uint16_t localX, localY, localWidth;
@@ -901,12 +907,14 @@ void cSongPlayer::calculateSelection(uint8_t pattern,
 
     if (controlData->selection.isActive)
     {
-        if ((textListPos + pattern) >= controlData->selection.startSongPosition)
+        const int slot = SongRepeats::slot(controlData->songData, controlData->songLength, textListPos + pattern);
+        const int end = SongRepeats::end(controlData->songData, controlData->songLength, slot);
+        if (end > controlData->selection.startSongPosition)
         {
-            uint8_t calculatedPattern = textListPos + pattern;
+            int calculatedPattern = slot;
             uint8_t isSelected = 1;
 
-            if (!(calculatedPattern >= controlData->selection.startSongPosition))
+            if (!(end > controlData->selection.startSongPosition))
                 isSelected = 0;
             if (!(calculatedPattern < (controlData->selection.startSongPosition +
                                        controlData->selection.patternSelectionLength)))

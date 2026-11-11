@@ -67,15 +67,11 @@ void cSongEditor::initDisplayControls()
     for (uint8_t i = 0; i < 8; i++)
     {
         prop2.style = controlStyleCenterX | controlStyleCenterY | controlStyleFont3 |
-                      ((display.getTheme().patternEditorBottomButtonsLines && (i >= 2 && i <= 5)
+                      ((display.getTheme().patternEditorBottomButtonsLines && (i >= 2 && i <= 6)
                           ? controlStyleSpecialFx
                           : 0));
 
         prop2.x = (800 / 8) * i + (800 / 16);
-        if (i == 5)
-        {
-            prop2.x = (800 / 8) * i + (800 / 8);
-        }
 
         label[i] = display.createControl<cLabel>(&prop2);
     }
@@ -155,8 +151,9 @@ void cSongEditor::showDefaultScreen()
     display.setControlData(label[2], &labelDataRed);
     display.setControlData(label[3], &labelDataRed);
     display.setControlData(label[4], &labelDataRed);
-    display.setControlData(label[5], &doubleArrowRed);
-    display.setAddControlStyle(label[5], controlStyleShowBitmap);
+    display.setControlData(label[5], &labelDataRed);
+    display.setControlData(label[6], &labelDataRed);
+    display.setRemoveControlStyle(label[5], controlStyleShowBitmap);
 
     playButtonsState = 0;
 
@@ -185,7 +182,7 @@ void cSongEditor::showDefaultScreen()
     display.setControlText(label[5], "Pattern");
     display.setControlText2(label[5], "");
 
-    display.setControlText(label[6], "");
+    display.setControlText(label[6], "Repeat");
     display.setControlText2(label[6], "");
 
     display.setControlText(label[7], "Tempo");

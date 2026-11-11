@@ -73,6 +73,16 @@ class cSongEditor : public ModuleBase
 
     void changeSongPositionSelection(int16_t value);
     void changeSelectedPlayListPattern(int value);
+    void changeRepeatCount(int delta);
+    void replaceSongRange(int first, int last, int copies, uint8_t pattern);
+    bool undoPlaylistEdit();
+    uint8_t repeatControl = 0; // 5 Pattern, 6 Repeat; tap commits on release
+    bool repeatControlUsed = false;
+    bool playlistUndoValid = false;
+    uint8_t playlistUndo[SONG_MAX];
+    uint16_t playlistUndoLength;
+    uint8_t playlistUndoSelection;
+    uint8_t playlistUndoPlayPosition;
 
     void readSong();
 

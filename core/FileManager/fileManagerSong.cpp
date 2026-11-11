@@ -15,7 +15,7 @@ void setPatternBitmask(int patternIdx, int trackIdx, bool value);
 AUDIO_CORE_RAM uint8_t cFileManager::getNextSongPattern()
 {
     strSong* song = &mtProject.song;
-    return song->playlist[song->playlistPos + 1] > 0 ? song->playlist[song->playlistPos + 1]
+    return song->playlistPos + 1 < SONG_MAX && song->playlist[song->playlistPos + 1] > 0 ? song->playlist[song->playlistPos + 1]
                                                      : song->playlist[0];
 }
 uint8_t cFileManager::getSongPattern(uint8_t pos)
@@ -50,8 +50,9 @@ void cFileManager::setSongPos(uint8_t pos)
 bool cFileManager::switchNextPatternInSong()
 {
     strSong* song = &mtProject.song;
-    if (song->playlist[++(song->playlistPos)] != PLAYLIST_EMPTY_SLOT)
+    if (song->playlistPos + 1 < SONG_MAX && song->playlist[song->playlistPos + 1] != PLAYLIST_EMPTY_SLOT)
     {
+        ++song->playlistPos;
         return 1;
     }
     else

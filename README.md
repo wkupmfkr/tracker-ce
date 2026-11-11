@@ -1,10 +1,12 @@
-# JHNY_Trkr25 - custom Tracker+ firmware
+# JHNY_Trkr26 - custom Tracker+ firmware
 
-[Download firmware and source patch](https://github.com/wkupmfkr/tracker-ce/releases/tag/JHNY_Trkr25) | [English / Korean release notes](CHANGELOG-JHNY_Trkr25.md)
+[Download firmware and source patch](https://github.com/wkupmfkr/tracker-ce/releases/tag/JHNY_Trkr26) | [English / Korean release notes](CHANGELOG-JHNY_Trkr26.md)
+
+**Use Trkr26 instead of Trkr25: this prompt follow-up corrects the incomplete Song Repeat layout and editing.**
 
 Tracker+ only. Based on CE v1.0.0. Includes per-track length/rate, Rotate, playback and pad guides, MIDI routing/recording, mixer changes, C3 alignment and Unarmed live-recording startup. See the release notes for controls, compatibility and validation limits. This is an unofficial community build.
 
-Build with ARM GCC 10.3.1: `make plus NPROC=12 BUILD_TAG=JHNY_Trkr25`.
+Build with ARM GCC 10.3.1: `make plus NPROC=12 BUILD_TAG=JHNY_Trkr26`.
 
 ---
 
