@@ -799,14 +799,18 @@ void cPatternEditor::refreshPattern()
 
             if (isMicVolView)
             {
-                if (seqStep.micromove >= 0)
+                if (Sequencer::hasMicroMove(seqStep.micromove))
                 {
+                    if (seqStep.micromove < -1) {
+                        snprintf(row.fx[0], 5, "%4d", Sequencer::microMoveValue(seqStep.micromove));
+                    } else {
                     row.fx[0][0] = 'm';
                     sequencer.makeFxValLabelWithAlgin(&row.fx[0][1],
                                                       4,
                                                       sequencer.fx.FX_TYPE_MICROMOVE,
                                                       seqStep.micromove,
                                                       Sequencer::fxValLabelAlign_right);
+                    }
                 }
                 else
                 {
@@ -1089,8 +1093,8 @@ void cPatternEditor::cancelPopups()
                 case stepPopupOnlyMidiInstr:
                 case stepPopupOnlySynthAndMidiInstr:
                 {
-                    sendSelection();
-                    sequencer.setSelectionInstrument(mtProject.values.lastUsedInstrument);
+                    // Instrument picker only changes lastUsedInstrument. Explicit
+                    // instrument-column editing remains available outside the picker.
                 }
                 break;
 
@@ -1646,8 +1650,8 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
             ptrVal = &fillData[fillIdx].from;
             if (isMicVolView && editParam >= EditFx1)
             {
-                min = 0;
-                max = 100;
+                min = editParam == EditFx1 ? -50 : 0;
+                max = editParam == EditFx1 ? 50 : 100;
             }
             else
             {
@@ -1673,8 +1677,8 @@ void cPatternEditor::changeFillData(int16_t value, bool rollListOver)
             ptrVal = &fillData[fillIdx].to;
             if (isMicVolView && editParam >= EditFx1)
             {
-                min = 0;
-                max = 100;
+                min = editParam == EditFx1 ? -50 : 0;
+                max = editParam == EditFx1 ? 50 : 100;
             }
             else
             {
@@ -1767,7 +1771,7 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
             else if (editParam == EditInstr)
                 fillData[fillIdx].from = pad;
             else if (isMicVolView)
-                fillData[fillIdx].from = roundf(mapClamped<float>(pad, 0, 47, 0, 100));
+                fillData[fillIdx].from = roundf(mapClamped<float>(pad, 0, 47, editParam == EditFx1 ? -50 : 0, editParam == EditFx1 ? 50 : 100));
             else
             {
                 int16_t min_fx =
@@ -1797,7 +1801,7 @@ void cPatternEditor::changneFillDataByPad(uint8_t pad)
             else if (editParam == EditInstr)
                 fillData[fillIdx].to = pad;
             else if (isMicVolView)
-                fillData[fillIdx].to = roundf(mapClamped<float>(pad, 0, 47, 0, 100));
+                fillData[fillIdx].to = roundf(mapClamped<float>(pad, 0, 47, editParam == EditFx1 ? -50 : 0, editParam == EditFx1 ? 50 : 100));
             else
             {
                 int16_t min_fx =
@@ -2825,6 +2829,20 @@ static void functNote(uint8_t state)
 }
 
 //-----------------------------------------------------------------------------------
+void cPatternEditor::previewInstrumentPad(uint8_t pad, uint8_t state)
+{
+    if (pad >= 48) return;
+    if (state == buttonPress) {
+        instrumentPickerUsed = true;
+        instrumentPickerPads |= uint64_t(1) << pad;
+    } else if (state == buttonRelease) {
+        instrumentPickerPads &= ~(uint64_t(1) << pad);
+    } else return;
+#ifdef FEATURE_SYNTH
+    sequencer.previewSelectedInstrument(state == buttonPress, pad);
+#endif
+}
+
 static void functInstrument(uint8_t state)
 {
     if (mtPopups.isNoteKeyboardPopupActive())
@@ -2836,6 +2854,7 @@ static void functInstrument(uint8_t state)
 
     if (state == buttonPress)
     {
+        PTE->instrumentPickerUsed = false;
         PTE->setStepButtonState(1, 1);
         if (PTE->editParam == cPatternEditor::EditNote)
         {
@@ -2878,20 +2897,23 @@ static void functInstrument(uint8_t state)
     {
         PTE->setStepButtonState(1, 0);
 
-        // powrot do nuty po wybraniu instrumentu
-        if (PTE->fillState == 0 && PTE->wasNotesEditBefore &&
-            mtPopups.getStepPopupState() != stepPopupNone &&
-            (PTE->patternViewMode == 0 || PTE->patternViewMode == 3))
-        {
+        const auto popup = mtPopups.getStepPopupState();
+        const bool picker = popup == stepPopupInstr || popup == stepPopupOnlyMidiInstr ||
+                            popup == stepPopupOnlySynthAndMidiInstr;
+        const bool returnToNotes = PTE->fillState == 0 && (picker || PTE->instrumentPickerUsed);
+        PTE->cancelPopups();
+        if (returnToNotes) {
             PTE->wasNotesEditBefore = 0;
+            PTE->previousEditParam = cPatternEditor::EditInstr;
             PTE->editParam = cPatternEditor::EditNote;
             PTE->trackerPattern.selectedParam = 0;
-            display.refreshControl(PTE->patternControl);
-
+            PTE->changePatternViewMode(1);
+            PTE->showActualParamOnBar();
             PTE->focusOnPattern();
+            display.refreshControl(PTE->patternControl);
         }
+        PTE->instrumentPickerUsed = false;
 
-        PTE->cancelPopups();
         PTE->dontShowPopupsUntilButtonRelease = 0;
 
         sequencer.stopManualNotes();
@@ -4511,7 +4533,10 @@ void cPatternEditor::lightUpPadBoard()
                 {
                     Sequencer::strPattern::strTrack::strStep& tempStep =
                       seq->track[trackerPattern.actualTrack].step[trackerPattern.actualStep];
-                    int8_t val = (editParam == EditFx1) ? tempStep.micromove : tempStep.volume;
+                    int val = (editParam == EditFx1) ? tempStep.micromove : tempStep.volume;
+                    if (editParam == EditFx1 && Sequencer::hasMicroMove(val)) {
+                        val = clamp<int>(Sequencer::microMoveValue(val), -50, 50) + 50;
+                    } else if (editParam == EditFx1) break;
                     if (val >= 0 && val <= 100)
                     {
                         show_fx = roundf(map<float>((float)val, 0.0f, 100.0f, 0.0f, 47.0f));
@@ -4795,6 +4820,19 @@ static void functMiniMiddle(uint8_t state)
 static void functPads(uint8_t pad, uint8_t state, int16_t velo)
 {
     (void)velo;
+    if (pad < 48 && state == buttonRelease && (PTE->instrumentPickerPads & (uint64_t(1) << pad))) {
+        PTE->previewInstrumentPad(pad, state);
+        padsBacklight.setFrontLayer(0, 0, pad);
+        return;
+    }
+    if (pad < 48 && state == buttonPress && PTE->fillState == 0 &&
+        PTE->buttons->isButtonPressed(interfaceButtonInstr) &&
+        !PTE->buttons->isButtonPressed(interfaceButtonPattern)) {
+        PTE->showInstrumentPopup();
+        mtPopups.setStepPopupValue(pad);
+        PTE->previewInstrumentPad(pad, state);
+        return;
+    }
 
     if (PTE->keyboardManager.getState())
     {

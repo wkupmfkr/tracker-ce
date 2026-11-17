@@ -11,10 +11,26 @@
 #include "log.h"
 
 #include <cstring>
+#include "core/interface.h"
 
 void WorkspaceProjectLoad::update()
 {
     WorkspaceProjectLoadStep nextStep = operationStep;
+    const char* stage = "Load: prepare";
+    int instrument = 0;
+    switch (operationStep)
+    {
+        case initStep: break;
+        case loadProjectFile: stage = "Load: project"; break;
+        case loadInstrumentStruct: stage = "Load: instrument"; instrument = currentInstrument + 1; break;
+        case loadInstrumentSample:
+            stage = sampleLoadStep == 3 ? "Convert: sample" : "Load: sample";
+            instrument = currentInstrument + 1;
+            break;
+        case loadPatternFile: stage = "Load: pattern"; break;
+        case finishStep: stage = "Load: finalize"; break;
+    }
+    mtInterface.showProjectLoadStage(stage, instrument);
 
     switch (operationStep)
     {
@@ -138,6 +154,8 @@ void WorkspaceProjectLoad::loadProjectFromWorkspaceInit()
 {
     // tu czysci flagi zmian plikow bo podczas ladowania moga one zostac ustawione
     // jezeli np ladowany jest starsza wersja pliku i struktura jest modyfikwoana
+    newFileManager.stopAudioEngine();
+    newFileManager.resetLoadedInstrumentState();
     newFileManager.clearChangeFlags();
 
     currentInstrument = 0;

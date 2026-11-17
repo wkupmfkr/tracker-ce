@@ -10,6 +10,8 @@
 #include "core/graphicProcessing.h"
 #include "core/interface.h"
 #include "fileManager.h"
+#include "SliceSplit.h"
+#include <cstdio>
 #include "mtConfig.h"
 #include "mtSliceManager.h"
 #include "VoiceStreamManager.h"
@@ -87,6 +89,21 @@ constexpr uint32_t PLAY_REFRESH_US = 5000;
 
 void cSamplePlayback::update()
 {
+    if (splitInProgress) {
+        if (sliceSplit.busy()) {
+            mtPopups.changePopupProgress(sliceSplit.progress());
+            return;
+        }
+        splitInProgress = false;
+        mtPopups.hideProgressPopup();
+        ip->unblockAllInputs();
+        refreshSpectrum = refreshPoints = refreshSlicePoints = 1;
+        if (sliceSplit.result) mtPopups.showInfoPopup("Split stopped", sliceSplit.result);
+        else {
+            std::snprintf(splitMessage, sizeof(splitMessage), "Created %d one-shot instruments", sliceSplit.count);
+            mtPopups.showInfoPopup(splitMessage, "Save your project to keep them");
+        }
+    }
     refreshLiveParams();
 
     if (refreshSpectrum)
@@ -1031,6 +1048,15 @@ static void functButton4(uint8_t state)
     {
         if (SP->sliceScreenMode2)
         {
+            if (state == buttonPress && SP->editorInstrument->playMode == playModeBeatSlice) {
+                const char* error = sliceSplit.begin(mtProject.values.lastUsedInstrument);
+                if (error) mtPopups.showInfoPopup("Cannot split slices", error);
+                else {
+                    SP->splitInProgress = true;
+                    SP->ip->blockAllInputs();
+                    mtPopups.showProgressPopup("Splitting to empty slots...");
+                }
+            }
             return;
         }
 

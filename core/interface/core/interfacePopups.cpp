@@ -1186,19 +1186,13 @@ static void functPadsPopup(uint8_t pad, uint8_t state, int16_t)
                 break;
             }
             case stepPopupInstr:
+            case stepPopupOnlyMidiInstr:
+            case stepPopupOnlySynthAndMidiInstr:
             {
-                int8_t noteToPlay = Sequencer::STEP_NOTE_DEFAULT;
-                if (mtInterface.isPatternScreenActive())
-                {
-                    int instrumentToSet =
-                      patternEditor.isSelectionOrCursorInMidiTracks()
-                        ? MIDI_INSTRUMENTS_START_IDX + (pad % kMidiInstrumentsCount)
-                        : pad;
-
-                    sendSelection();
-                    noteToPlay = sequencer.getSelectionFirstNote();
-                }
-                sequencer.handleNoteOn(Sequencer::GRID_OUTSIDE_PATTERN, noteToPlay, -1, pad);
+#ifdef FEATURE_SYNTH
+                if (mtInterface.isPatternScreenActive()) patternEditor.previewInstrumentPad(pad, state);
+                else sequencer.previewSelectedInstrument(true, pad);
+#endif
                 break;
             }
             default: break;
@@ -1218,14 +1212,13 @@ static void functPadsPopup(uint8_t pad, uint8_t state, int16_t)
                 break;
             }
             case stepPopupInstr:
+            case stepPopupOnlyMidiInstr:
+            case stepPopupOnlySynthAndMidiInstr:
             {
-                int8_t noteToPlay = Sequencer::STEP_NOTE_DEFAULT;
-                if (mtInterface.isPatternScreenActive())
-                {
-                    sendSelection();
-                    noteToPlay = sequencer.getSelectionFirstNote();
-                }
-                sequencer.handleNoteOff(Sequencer::GRID_OUTSIDE_PATTERN, noteToPlay, 0, pad);
+#ifdef FEATURE_SYNTH
+                if (mtInterface.isPatternScreenActive()) patternEditor.previewInstrumentPad(pad, state);
+                else sequencer.previewSelectedInstrument(false, pad);
+#endif
                 break;
             }
             default: break;

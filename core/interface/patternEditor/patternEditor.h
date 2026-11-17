@@ -329,6 +329,9 @@ class cPatternEditor : public ModuleBase
     //-------------------------------------------------------
     // popups
     void cancelPopups();
+    void previewInstrumentPad(uint8_t pad, uint8_t state);
+    uint64_t instrumentPickerPads = 0;
+    bool instrumentPickerUsed = false;
 
     uint8_t getStepFx();
     int8_t getStepVol();

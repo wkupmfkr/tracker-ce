@@ -313,7 +313,7 @@ void Sequencer::processTransportMicrostep()
     }
 }
 
-AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
+AUDIO_CORE_FLASH void Sequencer::play_microStep(int row, int earlyStep)
 {
     assert(row < kAllTracks);
 
@@ -323,15 +323,23 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
     strPlayer::strPlayerTrack::strSendStep& stepToSend = player.track[row].stepToSend;
     strPlayer::strPlayerTrack::strSendStep& stepSent = player.track[row].stepSent;
 
+    const bool early = earlyStep >= 0;
+    const int sourceStep = early ? earlyStep : soundingStep(row);
+    bool beginStep = early || playerRow.uStep == 1;
+    if (!early && playerRow.uStep == 1) {
+        if (anticipatedStep[row] == sourceStep + 1) beginStep = false;
+        anticipatedStep[row] = 0;
+    }
+
     bool forceFirstRollWhenNoNote = 0; // potrzebne jak rolka wchodzi jako efekt bez nuty
     int forceFirstRollWhenNoNote_fxIndex = 0;
 
 
 
-    if (playerRow.uStep == 1)
+    if (beginStep)
     {
         memcpy((uint8_t*)&stepToSend,
-               (uint8_t*)&patternRow.step[soundingStep(row)],
+               (uint8_t*)&patternRow.step[sourceStep],
                sizeof(strPattern::strTrack::strStep));
 
         if (isCustomPlayMode(row))
@@ -353,12 +361,14 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
 
         //		playerRow.micromove.isActive = 0;
         playerRow.cancelStep = 0;
+        if (stepToSend.micromove < -1) playerRow.micromove.reset();
     }
 
     //	******************************************************************************
     // 	odliczamy odpaloną nutę i stepa, step może zawierać kilka nut
     //	******************************************************************************
 
+    if (!early) {
     if (playerRow.stepOpen)
     {
         playerRow.stepTimer++;
@@ -413,6 +423,8 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
         playerRow.arp.timer++;
     }
 
+    } // timers advance once, never during look-ahead dispatch
+
     // ************************************
     // 			jesli zmutowany albo nieaktywny(playSelection)
     //			to reszta sie nie wykonuje
@@ -432,7 +444,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
     int16_t randomisedValue = -1;
     int16_t gateLength = -1;
 
-    if (playerRow.uStep == 1)
+    if (beginStep)
     {
 
         if (stepToSend.fx[0].type == fx.FX_TYPE_RANDOM_VALUE)
@@ -492,7 +504,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
         {
             if (isMidiInstrument(stepToSend.instrument))
             {
-                if (getInstrumentMidiOffset(stepToSend.instrument) != 0)
+                if (stepToSend.micromove >= -1 && getInstrumentMidiOffset(stepToSend.instrument) != 0)
                 {
                     offsetValue =
                       map(getInstrumentMidiOffset(stepToSend.instrument) + 1, 0, 100, 1, 46);
@@ -553,6 +565,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
                     killFxOnSlot(row, fxIndex);
                     atLeastOneFx = 1;
 
+                    if (stepToSend.micromove < -1) break;
                     uint16_t micromoveVal = map(_fx.value + 1, 0, 100, 1, 48);
 
                     micromoveVal += offsetValue;
@@ -778,7 +791,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
                         playerRow.roll.startingVolume = -1;
                         if (playerRow.roll.volumeOption != rollVolumeOption_const)
                         {
-                            playerRow.roll.length = calcStepLength(row, soundingStep(row));
+                            playerRow.roll.length = calcStepLength(row, sourceStep);
 
                             playerRow.roll.startingVolume = stepSent.volume;
                         }
@@ -827,7 +840,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
     if (stepToSend.note != STEP_NOTE_EMPTY)
     {
         // !micromove
-        if (!playerRow.micromove.isActive && playerRow.uStep == 1 && !playerRow.cancelStep)
+        if (!playerRow.micromove.isActive && beginStep && !playerRow.cancelStep)
         {
             startStep = 1;
             playerRow.micromove.reset();
@@ -891,7 +904,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
                     playerRow.roll.startingVolume = -1;
                     if (playerRow.roll.volumeOption != rollVolumeOption_const)
                     {
-                        playerRow.roll.length = calcStepLength(row, soundingStep(row));
+                        playerRow.roll.length = calcStepLength(row, sourceStep);
 
                         playerRow.roll.startingVolume = stepToSend.volume;
                     }
@@ -984,6 +997,13 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
         playerRow.stepTimer = 0; // od tej pory timer liczy w górę
 
         // ustawiamy nute
+        // A positive micro-move restores the saved step on a later call; recover
+        // its gate there as well, rather than losing it with the local variable.
+        if (gateLength < 0) {
+            for (const auto& effect : stepToSend.fx)
+                if (effect.type == fx.FX_TYPE_GATE_LENGTH)
+                    gateLength = mapClamped<int>(effect.value, 0, 100, 0, 47);
+        }
         playerRow.noteLength = gateLength; // ustawiany z fxa, -1 to nieskonczonosc
         playerRow.noteTimer = 0;           // od tej pory timer liczy w górę
 
@@ -1046,6 +1066,7 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
     // **************************
     // 		kontynuowanie nuty
     // **************************
+    if (early) return;
     if (playerRow.stepSent.note != STEP_NOTE_EMPTY && playerRow.performanceStepRepeater != 0)
     {
         uint16_t period = stutterValToPeriod(playerRow.performanceStepRepeater);
@@ -1183,6 +1204,40 @@ AUDIO_CORE_FLASH void Sequencer::play_microStep(int row)
             }
         }
     }
+    anticipateNextStep(row);
+}
+
+// Look ahead only where the next local step is deterministic. Transport-changing
+// effects and transitions fall back to their ordinary boundary; never guess a pattern.
+void Sequencer::anticipateNextStep(int row)
+{
+    auto& tr = player.track[row];
+    if (!player.isPlay || player.selectionMode || player.performanceMode || tr.recOpen ||
+        !tr.isActive || isTrackEngineMuted(row) || anticipatedStep[row] ||
+        player.breakPattern || player.tempoFx.stopAfterCurrentStep || loopResetPending) return;
+    const int masterLast = currentPattern->track[0].length;
+    if (player.globalPos >= masterLast && (player.songMode || renderMode || sequencialSwitch_GetNext() > 0)) return;
+    const int resetPeriod = currentPattern->resetBars();
+    if (resetPeriod && barsSinceReset + 1 >= resetPeriod &&
+        stepInBar + 1 >= getMetronomeNumerator() * getMetronomeDenominator()) return;
+    const int current = soundingStep(row);
+    const int last = usesTrackLoop(row) ? currentPattern->trackLastStep(row) : masterLast;
+    const int next = current >= last ? 0 : current + 1;
+    const auto& step = currentPattern->track[row].step[next];
+    const int advance = advanceMicroticks(step.micromove);
+    if (!advance || tr.uStep != 49 - advance) return;
+    for (const auto& effect : step.fx) {
+        if (effect.type == fx.FX_TYPE_TEMPO || effect.type == fx.FX_TYPE_SWING ||
+            effect.type == fx.FX_TYPE_BREAK_PATTERN) return;
+    }
+    // Preserve a previously delayed event: chronological event ordering still applies.
+    const auto delayed = tr.micromove;
+    const auto pass = tr.passCount;
+    if (!next) ++tr.passCount;
+    anticipatedStep[row] = next + 1;
+    play_microStep(row, next);
+    tr.passCount = pass;
+    if (delayed.isArmed) tr.micromove = delayed;
 }
 
 AUDIO_CORE_RAM uint8_t Sequencer::getNextArpNote(strPlayer::strPlayerTrack* playerRow)
@@ -1339,6 +1394,7 @@ void Sequencer::play(void)
 }
 AUDIO_CORE_RAM void Sequencer::play(uint8_t fromPos)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     fromPos = clamp<int>(fromPos, 0, MAXSTEP);
 
     if (!(isRec() && isPreRollConfigOn()))
@@ -1379,6 +1435,7 @@ AUDIO_CORE_RAM void Sequencer::play(uint8_t fromPos)
 
 void Sequencer::playSelection(bool looped) // potrzebuje aktualnego zaznaczenia
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     if (player.isPlay && !player.selectionMode)
         return;
 
@@ -1464,6 +1521,7 @@ void Sequencer::playSong(void)
 
 void Sequencer::playSongFromPosition(uint8_t fromPos)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     uint8_t patternToStart = newFileManager.getSongPattern(fromPos);
     uint8_t currentPatternIdx = mtProject.values.actualPattern;
 
@@ -1579,6 +1637,7 @@ AUDIO_CORE_RAM void Sequencer::stopManualNotes(void)
 
 void Sequencer::stop(void)
 {
+    memset(anticipatedStep, 0, sizeof(anticipatedStep));
     loopResetPending = false;
     trackPhaseReset = false;
     songTimer.stop();
@@ -1754,6 +1813,7 @@ void Sequencer::applyTrackRates(bool starting)
         const bool changed = activeTrackSpeed[t] != code;
         if (starting || audioResetPending || changed || !oldActive)
         {
+            if (starting || audioResetPending || changed) anticipatedStep[t] = 0;
             audioMicrostep[t] = 1;
             audioCountdown[t] = 0;
         }
@@ -1793,6 +1853,7 @@ void Sequencer::processScaledTrackTick()
 
 void Sequencer::startLoopClock(uint16_t step)
 {
+    memset(anticipatedStep, 0, sizeof(anticipatedStep));
     const int bar = getMetronomeNumerator() * getMetronomeDenominator();
     stepInBar = step % bar;
     barsSinceReset = step / bar;
@@ -2694,6 +2755,46 @@ uint8_t Sequencer::getDestRecordingStep(uint8_t track, bool quantize, bool noteO
     return destPos;
 }
 
+// Signed recording uses the nearest local grid point. Keep the original
+// 0..100 playback quantizer, choosing its inverse so old projects retain timing.
+Sequencer::RecordingPosition Sequencer::nearestRecordingPosition(uint8_t track) const
+{
+    const int last = usesTrackLoop(track) ? currentPattern->trackLastStep(track) : currentPattern->track[0].length;
+    int dest = soundingStep(track);
+    int ticks = clamp<int>(trackRecordingMicrostep(track), 1, 48) - 1;
+    if (ticks > 24) {
+        ticks -= 48;
+        dest = (dest + 1) % (last + 1);
+    }
+    if (!ticks) return {uint8_t(dest), -1}; // blank is exact grid; legacy m0 delays one tick
+    const int magnitude = ticks < 0 ? -ticks : ticks;
+    const int value = (magnitude * 100 + 46) / 47 - 2;
+    return {uint8_t(dest), encodeMicroMove(ticks < 0 ? -value : value)};
+}
+
+bool Sequencer::recordLiveNoteOff(uint8_t track)
+{
+    const bool micro = recMicrotiming();
+    auto position = micro ? nearestRecordingPosition(track) :
+        RecordingPosition{getDestRecordingStep(track, true, true), -1};
+    auto& tr = player.track[track];
+    const int start = tr.recNoteOnStepIdx;
+    if (micro && position.step == start) {
+        // Original OFF collision policy: keep the ON, advance exactly one
+        // local step, and do not carry a timing offset to the displaced OFF.
+        const int period = 1 + (usesTrackLoop(track) ? currentPattern->trackLastStep(track) :
+                                                       currentPattern->track[0].length);
+        position.step = (position.step + 1) % period;
+        position.microMove = -1;
+    }
+    auto& off = currentPattern->track[track].step[position.step];
+    if (!off.isNoteEmpty()) return false;
+    off.note = STEP_NOTE_OFF_DEFAULT;
+    if (micro) off.micromove = position.microMove;
+    if (micro && position.microMove < -1) anticipatedStep[track] = position.step + 1;
+    return true;
+}
+
 uint8_t Sequencer::recMicrotiming()
 {
     return mtConfig.general.recOptions == recOptions_microtimingAndVelocity ||
@@ -2708,12 +2809,30 @@ uint8_t Sequencer::recVelocity()
 #ifdef FEATURE_SYNTH
 // Use the same manual voice state as the existing live player, so transport
 // stop and project changes can close these notes through the normal cleanup.
+void Sequencer::previewSelectedInstrument(bool pressed, uint8_t pad)
+{
+    // Separate from note pads (0..47), ordinary MIDI and mapped MIDI (1024+).
+    const int source = 512 + pad;
+    if (!pressed) { releaseRoutedNote(source); return; }
+    const int instrument = mtProject.values.lastUsedInstrument;
+    int note = 60; // Synth/MIDI middle C (displayed as C3).
+    if (isSampleInstrument(instrument)) {
+        const auto& inst = mtProject.instrument[instrument];
+        if (!inst.isActive) return;
+        // Retain legacy sample tuning; preview its native root without rewriting it.
+        note = inst.playMode == playModeBeatSlice ? FIRST_BEAT_SLICE_NOTE :
+               60 - inst.sampleRootOffset();
+    }
+    playRoutedNote(instrument, note, 127, source);
+}
+
 void Sequencer::playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source)
 {
     releaseRoutedNote(source);
     const bool synth = isSynthInstrument(instrument);
-    const int count = synth ? kAllTracks : kSampleTracks;
-    const int first = synth ? kSampleTracks : 0;
+    const bool midi = synth || isMidiInstrument(instrument);
+    const int count = midi ? kAllTracks : kSampleTracks;
+    const int first = midi ? kSampleTracks : 0;
     for (int offset = 0; offset < count; ++offset)
     {
         const int track = (first + offset) % count;
@@ -2727,7 +2846,7 @@ void Sequencer::playRoutedNote(int instrument, uint8_t note, uint8_t velocity, i
         voice.noteSource = source;
         voice.stepSent.note = note;
         voice.stepSent.instrument = instrument;
-        if (synth)
+        if (midi)
         {
             // Two inputs can target the same synth pitch. Only the last held
             // key releases it, so do not stack another indistinguishable note.
@@ -2735,7 +2854,7 @@ void Sequencer::playRoutedNote(int instrument, uint8_t note, uint8_t velocity, i
                 if (&other != &voice && other.noteOpen && other.recOpen &&
                     other.stepSent.instrument == instrument && other.stepSent.note == note)
                     return;
-            sendMidiNoteOn(note, velocity, instrumentIdxToMidiChannel(instrument), true);
+            sendMidiNoteOn(note, velocity, instrumentIdxToMidiChannel(instrument), synth);
         }
         else
         {
@@ -2759,13 +2878,13 @@ bool Sequencer::releaseRoutedNote(int16_t source)
         voice.recOpen = 0;
         voice.noteOpen = 0;
         const auto& step = voice.stepSent;
-        if (isSynthInstrument(step.instrument))
+        if (isSynthInstrument(step.instrument) || isMidiInstrument(step.instrument))
         {
             for (const auto& other : player.track)
                 if (other.noteOpen && other.recOpen && other.stepSent.instrument == step.instrument &&
                     other.stepSent.note == step.note)
                     return true;
-            sendMidiNoteOff(step.note, 0, instrumentIdxToMidiChannel(step.instrument), true);
+            sendMidiNoteOff(step.note, 0, instrumentIdxToMidiChannel(step.instrument), isSynthInstrument(step.instrument));
         }
         else
             instrumentPlayer[track].noteOff();
@@ -2988,7 +3107,9 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
 #endif
             if (mappedInstrument >= 0 && isSampleInstrument(mappedInstrument) && !isSampleTrack(tr))
                 continue;
-            uint8_t destinationStep = isAnticipatedBeat1 ? 0 : getDestRecordingStep(tr, !recMicrotiming());
+            const auto recording = nearestRecordingPosition(tr);
+            uint8_t destinationStep = isAnticipatedBeat1 ? 0 :
+                (recMicrotiming() ? recording.step : getDestRecordingStep(tr, true));
 
             strPattern::strTrack::strStep* step = &currentPattern->track[tr].step[destinationStep];
 
@@ -3048,15 +3169,14 @@ AUDIO_CORE_FLASH void Sequencer::handleNoteOn(
                     player.track[tr].recOpen = 1;
                     player.track[tr].noteSource = source;
                     player.track[tr].recNoteOnStepIdx = destinationStep;
+                    player.track[tr].noteLength = -1;
+                    player.track[tr].noteTimer = 0;
 
                     if (recMicrotiming())
                     {
-                        step->micromove =
-                          isAnticipatedBeat1
-                            ? 0
-                            : clamp<int>(mapClamped<int>(trackRecordingMicrostep(tr), 1, 48, 0, 100),
-                                         getFxMin(fx.FX_TYPE_MICROMOVE),
-                                         getFxMax(fx.FX_TYPE_MICROMOVE));
+                        step->micromove = isAnticipatedBeat1 ? -1 : recording.microMove;
+                        // The live preview has already sounded this future cell.
+                        if (step->micromove < -1) anticipatedStep[tr] = destinationStep + 1;
 
                         wasChangeInPattern = true;
                     }
@@ -3290,24 +3410,7 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                     if (wasRecOpen && !padInstrumentEdit && !player.preRecMetronomeActive)
                     {
-                        uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
-                        strPattern::strTrack::strStep* step =
-                          &currentPattern->track[tr].step[destinationStep];
-
-                        if (step->isNoteEmpty())
-                        {
-                            wasChangeInPattern = true;
-
-                            step->note = STEP_NOTE_OFF_DEFAULT;
-
-                            if (recMicrotiming() && destinationStep == soundingStep(tr))
-                            {
-                                step->micromove =
-                                  clamp<int>(mapClamped<int>(trackRecordingMicrostep(tr), 1, 48, 0, 100),
-                                             getFxMin(fx.FX_TYPE_MICROMOVE),
-                                             getFxMax(fx.FX_TYPE_MICROMOVE));
-                            }
-                        }
+                        wasChangeInPattern |= recordLiveNoteOff(tr);
                     }
                 }
             }
@@ -3323,7 +3426,6 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
                      source != player.track[tr].noteSource))
                     continue;
 #endif
-                uint8_t destinationStep = getDestRecordingStep(tr, !recMicrotiming(), true);
                 bool shouldOff = (player.track[tr].recOpen || player.track[tr].noteOpen) &&
                                  player.track[tr].stepSent.note == note;
 
@@ -3368,23 +3470,7 @@ void Sequencer::handleNoteOff(byte channel, // pochodzenie grida np. GRID_OUTSID
 
                     if (wasRecOpen && !player.preRecMetronomeActive)
                     {
-                        strPattern::strTrack::strStep* step =
-                          &currentPattern->track[tr].step[destinationStep];
-
-                        if (step->isNoteEmpty())
-                        {
-                            wasChangeInPattern = true;
-
-                            step->note = STEP_NOTE_OFF_DEFAULT;
-
-                            if (recMicrotiming() && destinationStep == soundingStep(tr))
-                            {
-                                step->micromove =
-                                  clamp<int>(mapClamped<int>(trackRecordingMicrostep(tr), 1, 48, 0, 100),
-                                             getFxMin(fx.FX_TYPE_MICROMOVE),
-                                             getFxMax(fx.FX_TYPE_MICROMOVE));
-                            }
-                        }
+                        wasChangeInPattern |= recordLiveNoteOff(tr);
                     }
                     break;
                 }
@@ -3655,6 +3741,7 @@ AUDIO_CORE_RAM uint8_t Sequencer::getInstrumentMidiOffset(uint8_t instrument)
 
 void Sequencer::switchRamPatternsNow()
 {
+    memset(anticipatedStep, 0, sizeof(anticipatedStep));
     cancelFxes();
     std::swap(currentPattern, bufferPattern);
     applyRatesPending = true;

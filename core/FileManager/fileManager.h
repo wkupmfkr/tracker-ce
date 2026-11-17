@@ -62,6 +62,7 @@ enum fileManagerStatus
     fmImportingSampleFromSampleEditor,
     fmReloadingSamples,
     fmDrawingSampleWaveform,
+    fmSplittingSlices,
 
     fmLoadEnd,
     fmSaveEnd,
@@ -133,6 +134,7 @@ enum fileManagerOperation
     fmReloadSamples,
 
     fmDrawSampleWaveform,
+    fmSplitSlices,
 };
 
 enum enImportModMode
@@ -211,6 +213,7 @@ class cFileManager
     // setery
     void autosaveProjectStruct_ASAP();
 
+    void resetLoadedInstrumentState();
     void stopAudioEngine();
     void startAudioEngine();
 

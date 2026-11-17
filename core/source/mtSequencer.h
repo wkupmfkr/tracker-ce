@@ -26,6 +26,15 @@ class Sequencer
 
   public:
     Sequencer();
+    // V6's -1 remains empty. -2..-101 encode displayed -1..-100.
+    static constexpr bool hasMicroMove(int raw) { return raw >= -101 && raw != -1 && raw <= 100; }
+    static constexpr int microMoveValue(int raw) { return raw < -1 ? raw + 1 : raw; }
+    static constexpr int8_t encodeMicroMove(int value) {
+        return value < 0 ? (value < -50 ? -51 : value - 1) : (value > 50 ? 50 : value);
+    }
+    static constexpr int advanceMicroticks(int raw) {
+        return raw < -1 && raw >= -101 ? ((-microMoveValue(raw) + 1) * 47 / 100 + 1) : 0;
+    }
 
     static constexpr int TRACKS = 8; // todo: use kAllTracks in futore or other in mtStructs
     typedef float seqtimesec_t;
@@ -329,7 +338,7 @@ class Sequencer
                 }
                 bool hasAnyFx()
                 {
-                    return fx[0].type != 0 || fx[1].type != 0 || volume >= 0 || micromove >= 0;
+                    return fx[0].type != 0 || fx[1].type != 0 || volume >= 0 || hasMicroMove(micromove);
                 }
 
             } step[MAXSTEP + 1];
@@ -973,6 +982,7 @@ class Sequencer
     bool isLastPatternStep(void);
 
 #ifdef FEATURE_SYNTH
+    void previewSelectedInstrument(bool pressed, uint8_t pad);
     void playRoutedNote(int instrument, uint8_t note, uint8_t velocity, int16_t source);
     bool releaseRoutedNote(int16_t source);
     bool releaseMappedInput(int16_t source);
@@ -1055,7 +1065,12 @@ class Sequencer
     void resetChanceState(void);
     bool evaluateChanceFx(uint8_t row, uint8_t value);
 
-    void play_microStep(int row);
+    void play_microStep(int row, int earlyStep = -1);
+    void anticipateNextStep(int row);
+    struct RecordingPosition { uint8_t step; int8_t microMove; };
+    RecordingPosition nearestRecordingPosition(uint8_t track) const;
+    bool recordLiveNoteOff(uint8_t track);
+    uint8_t anticipatedStep[kAllTracks]{}; // target index + 1, zero means none
     void inc_uStep(uint8_t row);
     void inc_uStepGlobal();
 

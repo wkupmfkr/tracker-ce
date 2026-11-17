@@ -1,3 +1,11 @@
+# JHNY_Trkr32 — Tracker+ community firmware
+
+[Download firmware and six editor effects](https://github.com/wkupmfkr/tracker-ce/releases/tag/JHNY_Trkr32) | [English / 한국어 changelog](CHANGELOG-JHNY_Trkr32.md)
+
+Build: `make plus NPROC=12 BUILD_TAG=JHNY_Trkr32`. Based on CE v1.0.0. Older release information follows for history.
+
+---
+
 # JHNY_Trkr26 - custom Tracker+ firmware
 
 [Download firmware and source patch](https://github.com/wkupmfkr/tracker-ce/releases/tag/JHNY_Trkr26) | [English / Korean release notes](CHANGELOG-JHNY_Trkr26.md)

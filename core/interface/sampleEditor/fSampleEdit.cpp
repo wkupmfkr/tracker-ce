@@ -671,7 +671,7 @@ void cSampleEditor::noteOnHandle(uint8_t channel,
     }
 
     mtPadBoard.startNoteWithoutInstrument(
-      clamp<int>(int(note) + SE->editorInstrument->tuneResample + SE->editorInstrument->sampleRootOffset(), MIN_NOTE, MAX_NOTE - 1),
+      clamp<int>(int(note) + SE->editorInstrument->tuneResample + 24, MIN_NOTE, MAX_NOTE - 1),
       addresses,
       length - addressShift,
       vol,
@@ -1639,11 +1639,11 @@ static void functMiniMiddle(uint8_t state)
 
     if (state == buttonPress)
     {
-        SE->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - SE->editorInstrument->sampleRootOffset(), 100, pad);
+        SE->noteOnHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - 24, 100, pad);
     }
     else if (state == buttonRelease)
     {
-        SE->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - SE->editorInstrument->sampleRootOffset(), 0, pad);
+        SE->noteOffHandle(Sequencer::GRID_OUTSIDE_PATTERN, kC5Note - 24, 0, pad);
     }
 }
 

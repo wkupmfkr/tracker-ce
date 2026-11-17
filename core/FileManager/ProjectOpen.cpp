@@ -11,10 +11,24 @@
 #include "log.h"
 
 #include <cstring>
+#include "core/interface.h"
 
 void ProjectOpen::update()
 {
     ProjectOpenStep nextStep = operationStep;
+    const char* stage = "Copy: prepare";
+    int instrument = 0;
+    switch (operationStep)
+    {
+        case initStep: break;
+        case loadProjectFile: stage = "Copy: read project"; break;
+        case saveProjectFile: stage = "Copy: save project"; break;
+        case copyPatternFiles: stage = "Copy: patterns"; break;
+        case copyInstrumentFiles: stage = "Copy: instrument"; instrument = currentInstrument + 1; break;
+        case copySampleFiles: stage = "Copy: sample"; instrument = currentInstrument + 1; break;
+        case finishStep: stage = "Copy: synth patches"; break;
+    }
+    mtInterface.showProjectLoadStage(stage, instrument);
 
     switch (operationStep)
     {

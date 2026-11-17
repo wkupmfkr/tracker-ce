@@ -216,7 +216,11 @@ void cSamplePlayback::showDefaultScreen()
                 display.setControlText(label[1], "Slice");
                 display.setControlText(label[2], "No of Slices");
                 display.setControlText(label[3], "Play Thru");
-                display.setControlText(label[4], "");
+                bool canSplit = editorInstrument->playMode == playModeBeatSlice;
+                display.setControlText(label[4], canSplit ? "Split" : "");
+                display.setControlText2(label[4], canSplit ? "To slots" : "");
+                display.setControlStyle2(label[4], controlStyleCenterX | controlStyleCenterY | controlStyleFont3);
+                display.setControlColors(label[4], display.getTheme().activeButtonLabelsColors);
                 display.setControlText(label[5], "More");
 
                 display.setControlText2(label[0], "Auto");

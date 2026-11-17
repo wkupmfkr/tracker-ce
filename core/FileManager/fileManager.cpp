@@ -9,6 +9,7 @@
 #include "mtSequencer.h"
 
 #include "fileManager.h"
+#include "SliceSplit.h"
 #include "fileTransfer.h"
 
 #include "projectEditor/projectEditor.h"
@@ -94,6 +95,7 @@ void cFileManager::update()
 
         case fmReloadSamples: sampleMemoryReload.update(); break;
 
+        case fmSplitSlices: sliceSplit.update(); break;
         case fmDrawSampleWaveform: updateDrawSampleWaveform(); break;
 
         default: break;

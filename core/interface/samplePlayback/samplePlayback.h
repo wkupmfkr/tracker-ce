@@ -181,6 +181,8 @@ class cSamplePlayback : public ModuleBase
     elapsedMicros refreshPlayProgressValue = 0;
     float playPitch = 1.0;
     bool sliceScreenMode2;
+    bool splitInProgress = false;
+    char splitMessage[64];
     int8_t displayedTrack = -1;
 
     strInstrument* editorInstrument = nullptr;

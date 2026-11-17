@@ -311,7 +311,7 @@ void Sequencer::fillLinearMicromove(int16_t fillStep,
         for (uint8_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, hasMicroMove(step->micromove), fillStep, density))
             {
                 float tempFloat = fromVal;
                 if (sel->firstStep != sel->lastStep)
@@ -322,7 +322,7 @@ void Sequencer::fillLinearMicromove(int16_t fillStep,
                                                   fromVal,
                                                   toVal);
                 }
-                step->micromove = clamp<int>((int)roundf(tempFloat), 0, 100);
+                step->micromove = encodeMicroMove((int)roundf(tempFloat));
             }
         }
     }
@@ -344,9 +344,9 @@ void Sequencer::fillRandomMicromove(int16_t fillStep,
         for (uint8_t s = sel->firstStep, offset = 0; s <= sel->lastStep; s++, offset++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            if (isStepToFillProp(step, offset, step->micromove >= 0, fillStep, density))
+            if (isStepToFillProp(step, offset, hasMicroMove(step->micromove), fillStep, density))
             {
-                step->micromove = clamp<int>(utilMathRandom::random(fromVal, toVal + 1), 0, 100);
+                step->micromove = encodeMicroMove(utilMathRandom::random(fromVal, toVal + 1));
             }
         }
     }
@@ -847,14 +847,14 @@ void Sequencer::changeSelectionMicromove(int16_t value)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
 
-            if (step->micromove >= 0)
+            if (hasMicroMove(step->micromove))
             {
-                step->micromove = clamp<int>(step->micromove + value, 0, 100);
+                step->micromove = encodeMicroMove(microMoveValue(step->micromove) + value);
                 somethingWasChanged = true;
             }
             else if (!isMultiSelection())
             {
-                step->micromove = clamp<int>(value > 0 ? value : 0, 0, 100);
+                step->micromove = encodeMicroMove(value);
                 somethingWasChanged = true;
             }
         }
@@ -884,7 +884,7 @@ void Sequencer::setSelectionMicromoveByPad(int16_t pad)
         for (uint8_t s = sel->firstStep; s <= sel->lastStep; s++)
         {
             strPattern::strTrack::strStep* step = &currentPattern->track[t].step[s];
-            step->micromove = roundf(mapClamped<float>(pad, 0, 47, 0, 100));
+            step->micromove = encodeMicroMove(roundf(mapClamped<float>(pad, 0, 47, -50, 50)));
             somethingWasChanged = true;
         }
     }

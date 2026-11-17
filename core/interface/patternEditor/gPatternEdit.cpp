@@ -910,20 +910,14 @@ void cPatternEditor::refreshFillFrom()
     {
         if (isMicVolView)
         {
-            if (fillData[fillIdx].from < 0)
-                fillData[fillIdx].from = 0;
-            if (fillData[fillIdx].from > 100)
-                fillData[fillIdx].from = 100;
+            if (fillData[fillIdx].from < (editParam == EditFx1 ? -50 : 0))
+                fillData[fillIdx].from = editParam == EditFx1 ? -50 : 0;
+            if (fillData[fillIdx].from > (editParam == EditFx1 ? 50 : 100))
+                fillData[fillIdx].from = editParam == EditFx1 ? 50 : 100;
 
-            uint8_t fxType = editParam == EditFx1 ? sequencer.fx.FX_TYPE_MICROMOVE
-                                                  : sequencer.fx.FX_TYPE_VOLUME;
-            sequencer.makeFxValLabelWithAlgin(fillText1,
-                                              fillTextLen,
-                                              fxType,
-                                              fillData[fillIdx].from,
-                                              Sequencer::fxValLabelAlign_center);
+            snprintf(fillText1, fillTextLen, "%d", fillData[fillIdx].from);
             display.setControlText2(label[4], fillText1);
-            display.setControlValue(val1PopupBar, fillData[fillIdx].from);
+            display.setControlValue(val1PopupBar, editParam == EditFx1 ? fillData[fillIdx].from + 50 : fillData[fillIdx].from);
         }
         else
         {
@@ -1003,20 +997,14 @@ void cPatternEditor::refreshFillTo()
     {
         if (isMicVolView)
         {
-            if (fillData[fillIdx].to < 0)
-                fillData[fillIdx].to = 0;
-            if (fillData[fillIdx].to > 100)
-                fillData[fillIdx].to = 100;
+            if (fillData[fillIdx].to < (editParam == EditFx1 ? -50 : 0))
+                fillData[fillIdx].to = editParam == EditFx1 ? -50 : 0;
+            if (fillData[fillIdx].to > (editParam == EditFx1 ? 50 : 100))
+                fillData[fillIdx].to = editParam == EditFx1 ? 50 : 100;
 
-            uint8_t fxType = editParam == EditFx1 ? sequencer.fx.FX_TYPE_MICROMOVE
-                                                  : sequencer.fx.FX_TYPE_VOLUME;
-            sequencer.makeFxValLabelWithAlgin(fillText2,
-                                              fillTextLen,
-                                              fxType,
-                                              fillData[fillIdx].to,
-                                              Sequencer::fxValLabelAlign_center);
+            snprintf(fillText2, fillTextLen, "%d", fillData[fillIdx].to);
             display.setControlText2(label[5], fillText2);
-            display.setControlValue(val2PopupBar, fillData[fillIdx].to);
+            display.setControlValue(val2PopupBar, editParam == EditFx1 ? fillData[fillIdx].to + 50 : fillData[fillIdx].to);
             display.refreshControl(label[5]);
         }
         else

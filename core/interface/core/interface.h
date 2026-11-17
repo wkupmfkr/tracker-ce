@@ -91,6 +91,7 @@ class Interface
     void refreshDisplayShutdown();
     void hideDisplayShutdown();
 
+    void showProjectLoadStage(const char* stage, int instrument);
     void commonThingsUpdate();
     void processFileManagerPopupProgress(uint8_t status);
 

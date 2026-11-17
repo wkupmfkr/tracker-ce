@@ -317,7 +317,28 @@ void Interface::hideDisplayShutdown()
     turnOffProgressBar = -1;
 }
 
-// takie różne globalne rzeczy
+// takie r泥섑깋ne globalne rzeczy
+void Interface::showProjectLoadStage(const char* stage, int instrument)
+{
+    // Persistent text: the popup retains this pointer. No dynamic initializer.
+    static char shown[64] = {};
+    if (!fileManagerPopupEnabled)
+        return;
+    char next[64];
+    if (instrument > 0)
+        snprintf(next, sizeof(next), "%s %02d/48", stage, instrument);
+    else
+        snprintf(next, sizeof(next), "%s", stage);
+    if (fileManagerPopupState != 0 && strcmp(shown, next) == 0)
+        return;
+    strcpy(shown, next);
+    fileManagerPopupState = newFileManager.getStatus() == fmLoadingProjectfromWorkspace ? 8 : 9;
+    mtPopups.showProgressPopup(shown);
+    mtPopups.changePopupProgress(newFileManager.getProgress());
+    // Flush before blocking SD/conversion work, not after it returns.
+    display.processDisplayUpdateImmediate();
+}
+
 void Interface::commonThingsUpdate()
 {
     if (songTimer.enabled)
@@ -414,7 +435,7 @@ void Interface::processFileManagerPopupProgress(uint8_t status)
         case fmCopyingInstrumentsInWorkspace: break;
         case fmDeleteingInstruments: break;
         case fmPreviewSampleFromSd: break;
-        case fmLoadingProjectfromWorkspace: break;
+        case fmLoadingProjectfromWorkspace: progress = newFileManager.getProgress(); break;
         case fmLoadingProjectFromProjects: progress = newFileManager.getProgress(); break;
         case fmSavingProjectToWorkspace: break;
         case fmSavingProjectToProjects: progress = newFileManager.getProgress(); break;

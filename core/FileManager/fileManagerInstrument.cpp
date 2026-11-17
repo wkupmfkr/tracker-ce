@@ -12,6 +12,19 @@
 #include <algorithm>
 #include <cstring>
 
+// Project replacement only, with audio stopped. Future slots must not retain
+// old addresses: legacy WAV demotion compacts every active slot after itself.
+void cFileManager::resetLoadedInstrumentState()
+{
+    for (int idx = 0; idx < kSampleInstrumentsCount; ++idx)
+    {
+        voiceStreamManager.clearInstrumentMetadata(idx);
+        getEmptyInstrument(&mtProject.instrument[idx]);
+        mtProject.sampleMemory[idx] = {};
+    }
+    mtProject.used_memory = 0;
+}
+
 bool cFileManager::startNewInstrumentSampleLoad(int idx,
                                                 char* samplePath,
                                                 uint32_t& instrumentFileDataOffset)
@@ -611,7 +624,7 @@ bool cFileManager::saveInstrumentStructToWorkspace(int idx)
     return false;
 }
 
-// na potrzeby innych modułów - modów
+// na potrzeby innych modu흢처w - mod처w
 uint8_t cFileManager::saveInstrument(uint8_t idx)
 {
     strInstrumentFile fileManagerInstrumentBuffer;
@@ -728,7 +741,7 @@ uint8_t cFileManager::calcFirstSlotToMoveInMemory(uint8_t calcStartSlot)
 {
     uint8_t slot;
     // oblicz od ktorego instrumentu trzeba bedzie przesunac pamiec
-    // potem zostanie obliczony offset o jaki trzeba bedzie przesunąć
+    // potem zostanie obliczony offset o jaki trzeba bedzie przesun훳훶
     // jesli 48 to znaczy ze nie ma sampli do przesuniecia
     slot = calcStartSlot;
 

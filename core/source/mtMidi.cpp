@@ -185,6 +185,7 @@ static bool dispatchMappedCC(bool usb, byte channel, byte number, byte value)
 
 void handleJackNoteOn(byte channel, byte pitch, byte velocity)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     //	Serial.printf("ON\tch: %d, pitch: %d, velo: %d \r\n", channel, pitch,
     //					velocity);
     //	MIDI.sendNoteOn(pitch, velocity, channel);
@@ -239,6 +240,7 @@ void handleJackNoteOn(byte channel, byte pitch, byte velocity)
 }
 void handleUsbNoteOn(byte channel, byte pitch, byte velocity)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     //	Serial.printf("ON\tch: %d, pitch: %d, velo: %d \r\n", channel, pitch,
     //					velocity);
     //	MIDI.sendNoteOn(pitch, velocity, channel);
@@ -406,6 +408,7 @@ void handleUsbNoteOff(byte channel, byte pitch, [[maybe_unused]] byte velocity)
 
 void handleJackControlChange(byte channel, byte number, byte value)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
 
     if ((mtConfig.midi.ccInMode == ccIn_None) || (mtConfig.midi.ccInMode == ccIn_usb))
         return;
@@ -431,6 +434,7 @@ void handleJackControlChange(byte channel, byte number, byte value)
 
 void handleUSBControlChange(byte channel, byte number, byte value)
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     if ((mtConfig.midi.ccInMode == ccIn_None) || (mtConfig.midi.ccInMode == ccIn_jack))
         return;
 
@@ -586,6 +590,7 @@ void receiveUsbRealtime(uint8_t type)
 
 void receiveJackStart()
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     if (mtConfig.midi.transportIn == clockIn_Jack)
     {
         receiveStart();
@@ -602,6 +607,7 @@ void receiveJackStop()
 
 void receiveJackContinue()
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     if (mtConfig.midi.transportIn == clockIn_Jack)
     {
         receiveContinue();
@@ -625,12 +631,14 @@ void receiveClock()
 
 void receiveStart()
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     bool songMode = mtInterface.isSongScreenActive();
     sequencer.handleMidiInStart(false, songMode);
 }
 
 void receiveContinue()
 {
+    if (newFileManager.getCurrentOperation() == fmSplitSlices) return;
     bool songMode = mtInterface.isSongScreenActive();
     sequencer.handleMidiInStart(true, songMode);
 }
